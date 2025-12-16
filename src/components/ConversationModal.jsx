@@ -3,7 +3,7 @@ import { X, MessageSquare, Send } from 'lucide-react';
 import Toast from './Toast';
 import { updateLeadStatus, assignLeadToAgent, markMessagesAsRead } from '../services/airtable';
 
-const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate }) => {
+const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
   if (!lead) return null;
 
   const [messageText, setMessageText] = useState('');
@@ -36,7 +36,7 @@ const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate }) => {
       if (unreadCount > 0) {
         console.log('📬 Marking', unreadCount, 'messages as read for', lead.nom);
         try {
-          const updatedLead = await markMessagesAsRead(lead.id, lead.conversation);
+          const updatedLead = await markMessagesAsRead(agency, lead.id, lead.conversation);
 
           // Notifier le parent pour mettre à jour la liste
           if (onLeadUpdate) {

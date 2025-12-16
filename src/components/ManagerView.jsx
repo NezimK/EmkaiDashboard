@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Users, ChevronDown, ChevronUp } from 'lucide-react';
 import LeadCard from './LeadCard';
 
-const ManagerView = ({ leads, currentUser, onLeadUpdate, onOpenInfoModal, onOpenConversationModal }) => {
+const ManagerView = ({ leads, currentUser, onLeadUpdate, onOpenInfoModal, onOpenConversationModal, agency }) => {
   // Grouper les leads par agent
   const leadsByAgent = leads.reduce((acc, lead) => {
     const agent = lead.agent_en_charge || 'Non assigné';
@@ -144,6 +144,7 @@ const ManagerView = ({ leads, currentUser, onLeadUpdate, onOpenInfoModal, onOpen
                           onLeadUpdate={onLeadUpdate}
                           onOpenInfoModal={onOpenInfoModal}
                           onOpenConversationModal={onOpenConversationModal}
+                          agency={agency}
                         />
                       ))}
                     </div>

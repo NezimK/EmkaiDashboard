@@ -120,28 +120,53 @@ const Login = ({ onLogin, error: propError }) => {
 
           {/* Demo Credentials */}
           <div className="mt-6 pt-6 border-t border-gray-800">
-            <p className="text-xs text-gray-500 text-center mb-3">Comptes de démonstration :</p>
-            <div className="space-y-2 text-xs">
-              <div className="p-2 bg-gray-900/50 rounded">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-gray-400 font-semibold">Thomas Durand</span>
-                  <span className="text-blue-400 text-[10px]">Agent</span>
+            <p className="text-xs text-gray-500 text-center mb-3">Comptes de démonstration</p>
+
+            {/* Immocope */}
+            <div className="mb-4">
+              <p className="text-xs font-semibold text-accent mb-2 flex items-center">
+                <span className="w-2 h-2 bg-accent rounded-full mr-2"></span>
+                Immocope
+              </p>
+              <div className="space-y-2 text-xs">
+                <div className="p-2 bg-gray-900/50 rounded">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-gray-400 font-semibold">Agent</span>
+                    <span className="text-blue-400 text-[10px]">AGENT</span>
+                  </div>
+                  <div className="text-accent font-mono text-[11px]">agent@immocope.com / agent123</div>
                 </div>
-                <div className="text-accent font-mono text-[11px]">thomas.durand@emkai.com / agent123</div>
+                <div className="p-2 bg-gray-900/50 rounded">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-gray-400 font-semibold">Manager</span>
+                    <span className="text-purple-400 text-[10px]">MANAGER</span>
+                  </div>
+                  <div className="text-accent font-mono text-[11px]">manager@immocope.com / manager123</div>
+                </div>
               </div>
-              <div className="p-2 bg-gray-900/50 rounded">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-gray-400 font-semibold">Sophie Martin</span>
-                  <span className="text-blue-400 text-[10px]">Agent</span>
+            </div>
+
+            {/* RealAgency */}
+            <div>
+              <p className="text-xs font-semibold text-green-400 mb-2 flex items-center">
+                <span className="w-2 h-2 bg-green-400 rounded-full mr-2"></span>
+                RealAgency
+              </p>
+              <div className="space-y-2 text-xs">
+                <div className="p-2 bg-gray-900/50 rounded">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-gray-400 font-semibold">Agent</span>
+                    <span className="text-blue-400 text-[10px]">AGENT</span>
+                  </div>
+                  <div className="text-green-400 font-mono text-[11px]">agent@realagency.com / agent123</div>
                 </div>
-                <div className="text-accent font-mono text-[11px]">sophie.martin@emkai.com / agent123</div>
-              </div>
-              <div className="p-2 bg-gray-900/50 rounded">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-gray-400 font-semibold">Julien Bernard</span>
-                  <span className="text-purple-400 text-[10px]">Manager</span>
+                <div className="p-2 bg-gray-900/50 rounded">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-gray-400 font-semibold">Manager</span>
+                    <span className="text-purple-400 text-[10px]">MANAGER</span>
+                  </div>
+                  <div className="text-green-400 font-mono text-[11px]">manager@realagency.com / manager123</div>
                 </div>
-                <div className="text-accent font-mono text-[11px]">julien.bernard@emkai.com / manager123</div>
               </div>
             </div>
           </div>

@@ -3,7 +3,7 @@ import { AlertCircle, Info, UserCheck, Clock, MessageSquare } from 'lucide-react
 import { assignLeadToAgent } from '../services/airtable';
 import { formatTimeAgo } from '../utils/timeAgo';
 
-const LeadCard = ({ lead, onMarkContacted, currentUser, onLeadUpdate, onOpenInfoModal, onOpenConversationModal, showLastMessage = false }) => {
+const LeadCard = ({ lead, onMarkContacted, currentUser, onLeadUpdate, onOpenInfoModal, onOpenConversationModal, showLastMessage = false, agency }) => {
   const [isAssigning, setIsAssigning] = useState(false);
 
   const handleAssignToMe = async () => {
@@ -11,7 +11,7 @@ const LeadCard = ({ lead, onMarkContacted, currentUser, onLeadUpdate, onOpenInfo
 
     setIsAssigning(true);
     try {
-      const updatedLead = await assignLeadToAgent(lead.id, currentUser.name);
+      const updatedLead = await assignLeadToAgent(agency, lead.id, currentUser.name);
       if (onLeadUpdate) {
         onLeadUpdate(updatedLead);
       }

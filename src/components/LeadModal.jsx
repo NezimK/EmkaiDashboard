@@ -6,7 +6,7 @@ import ConfirmDialog from './ConfirmDialog';
 import AgentSelector from './AgentSelector';
 import StatusSelector from './StatusSelector';
 
-const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate }) => {
+const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
   if (!lead) return null;
 
   const [isAssigning, setIsAssigning] = useState(false);
@@ -22,8 +22,10 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate }) => {
   const isFree = !lead.agent_en_charge;
   const isManager = currentUser?.role === 'manager';
 
-  // Liste des agents disponibles (exclure les managers)
-  const availableAgents = mockUsers.filter(user => user.role === 'agent');
+  // Liste des agents disponibles (exclure les managers et filtrer par agence)
+  const availableAgents = mockUsers.filter(user =>
+    user.role === 'agent' && user.agency === agency
+  );
 
   // Assigner le lead à l'utilisateur connecté
   const handleAssignToMe = async () => {
@@ -33,7 +35,7 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate }) => {
     setAssignmentError(null);
 
     try {
-      const updatedLead = await assignLeadToAgent(lead.id, currentUser.name);
+      const updatedLead = await assignLeadToAgent(agency, lead.id, currentUser.name);
       if (onLeadUpdate) {
         onLeadUpdate(updatedLead);
       }
@@ -57,7 +59,7 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate }) => {
     setAssignmentError(null);
 
     try {
-      const updatedLead = await assignLeadToAgent(lead.id, currentUser.name);
+      const updatedLead = await assignLeadToAgent(agency, lead.id, currentUser.name);
       if (onLeadUpdate) {
         onLeadUpdate(updatedLead);
       }
@@ -81,7 +83,7 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate }) => {
     setAssignmentError(null);
 
     try {
-      const updatedLead = await unassignLead(lead.id);
+      const updatedLead = await unassignLead(agency, lead.id);
       if (onLeadUpdate) {
         onLeadUpdate(updatedLead);
       }
@@ -103,7 +105,7 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate }) => {
     setAssignmentError(null);
 
     try {
-      const updatedLead = await assignLeadToAgent(lead.id, agentName);
+      const updatedLead = await assignLeadToAgent(agency, lead.id, agentName);
       if (onLeadUpdate) {
         onLeadUpdate(updatedLead);
       }
@@ -121,7 +123,7 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate }) => {
     setAssignmentError(null);
 
     try {
-      const updatedLead = await updateLeadStatus(lead.id, newStatus);
+      const updatedLead = await updateLeadStatus(agency, lead.id, newStatus);
       if (onLeadUpdate) {
         onLeadUpdate(updatedLead);
       }

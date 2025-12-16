@@ -1,19 +1,55 @@
 // Service pour récupérer les données depuis Airtable
+// Multi-Agency Support: Each agency has its own Airtable base
 
-const AIRTABLE_TOKEN = import.meta.env.VITE_AIRTABLE_TOKEN;
-const BASE_ID = import.meta.env.VITE_AIRTABLE_BASE_ID;
 const TABLE_NAME = import.meta.env.VITE_AIRTABLE_TABLE_NAME || 'LEADS';
 
 /**
- * Récupère tous les leads depuis Airtable
+ * Configuration des agences - Chaque agence a son propre token et base Airtable
  */
-export async function fetchLeadsFromAirtable() {
+const AGENCY_CONFIG = {
+  AGENCY_A: {
+    token: import.meta.env.VITE_AIRTABLE_TOKEN_AGENCY_A,
+    baseId: import.meta.env.VITE_AIRTABLE_BASE_ID_AGENCY_A,
+  },
+  AGENCY_B: {
+    token: import.meta.env.VITE_AIRTABLE_TOKEN_AGENCY_B,
+    baseId: import.meta.env.VITE_AIRTABLE_BASE_ID_AGENCY_B,
+  },
+};
+
+/**
+ * Récupère la configuration Airtable pour une agence donnée
+ */
+function getAgencyConfig(agency) {
+  const config = AGENCY_CONFIG[agency];
+  if (!config) {
+    throw new Error(`Configuration non trouvée pour l'agence: ${agency}`);
+  }
+  if (!config.token || !config.baseId) {
+    throw new Error(`Configuration incomplète pour l'agence ${agency}. Vérifiez vos variables d'environnement.`);
+  }
+  return config;
+}
+
+/**
+ * Récupère tous les leads depuis Airtable pour une agence spécifique
+ * @param {string} agency - L'identifiant de l'agence (AGENCY_A ou AGENCY_B)
+ */
+export async function fetchLeadsFromAirtable(agency) {
+  if (!agency) {
+    throw new Error('L\'identifiant de l\'agence est requis pour récupérer les leads');
+  }
+
   try {
+    const { token, baseId } = getAgencyConfig(agency);
+
+    console.log(`🔄 Fetching leads for agency: ${agency}`);
+
     const response = await fetch(
-      `https://api.airtable.com/v0/${BASE_ID}/${TABLE_NAME}`,
+      `https://api.airtable.com/v0/${baseId}/${TABLE_NAME}`,
       {
         headers: {
-          Authorization: `Bearer ${AIRTABLE_TOKEN}`,
+          Authorization: `Bearer ${token}`,
         },
       }
     );
@@ -24,9 +60,11 @@ export async function fetchLeadsFromAirtable() {
 
     const data = await response.json();
 
+    console.log(`✅ Fetched ${data.records.length} leads for agency: ${agency}`);
+
     return data.records.map((record) => parseLeadFromAirtable(record));
   } catch (error) {
-    console.error('Error fetching leads from Airtable:', error);
+    console.error(`❌ Error fetching leads from Airtable for agency ${agency}:`, error);
     throw error;
   }
 }
@@ -157,15 +195,24 @@ function parseLeadFromAirtable(record) {
 
 /**
  * Met à jour un lead dans Airtable
+ * @param {string} agency - L'identifiant de l'agence (AGENCY_A ou AGENCY_B)
+ * @param {string} leadId - L'ID du lead à mettre à jour
+ * @param {object} updates - Les champs à mettre à jour
  */
-export async function updateLeadInAirtable(leadId, updates) {
+export async function updateLeadInAirtable(agency, leadId, updates) {
+  if (!agency) {
+    throw new Error('L\'identifiant de l\'agence est requis pour mettre à jour un lead');
+  }
+
   try {
+    const { token, baseId } = getAgencyConfig(agency);
+
     const response = await fetch(
-      `https://api.airtable.com/v0/${BASE_ID}/${TABLE_NAME}/${leadId}`,
+      `https://api.airtable.com/v0/${baseId}/${TABLE_NAME}/${leadId}`,
       {
         method: 'PATCH',
         headers: {
-          Authorization: `Bearer ${AIRTABLE_TOKEN}`,
+          Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -191,15 +238,18 @@ export async function updateLeadInAirtable(leadId, updates) {
 
 /**
  * Assigne un agent à un lead (met à jour le champ Agent_en_charge)
+ * @param {string} agency - L'identifiant de l'agence
+ * @param {string} leadId - L'ID du lead
+ * @param {string} agentName - Le nom de l'agent
  */
-export async function assignLeadToAgent(leadId, agentName) {
+export async function assignLeadToAgent(agency, leadId, agentName) {
   try {
-    console.log('🔄 Assigning lead:', leadId, 'to agent:', agentName);
+    console.log('🔄 Assigning lead:', leadId, 'to agent:', agentName, 'for agency:', agency);
 
     // Date actuelle au format ISO
     const now = new Date().toISOString();
 
-    const result = await updateLeadInAirtable(leadId, {
+    const result = await updateLeadInAirtable(agency, leadId, {
       Agent_en_charge: agentName,
       Date_prise_en_charge: now,
       Statut: 'En Découverte', // Changer le statut pour placer le dossier dans "En Découverte"
@@ -209,6 +259,7 @@ export async function assignLeadToAgent(leadId, agentName) {
   } catch (error) {
     console.error('❌ Error assigning lead to agent:', error);
     console.error('Error details:', {
+      agency,
       leadId,
       agentName,
       error: error.message,
@@ -220,12 +271,14 @@ export async function assignLeadToAgent(leadId, agentName) {
 
 /**
  * Désassigne un lead (retire l'agent et remet le statut à QUALIFIE)
+ * @param {string} agency - L'identifiant de l'agence
+ * @param {string} leadId - L'ID du lead
  */
-export async function unassignLead(leadId) {
+export async function unassignLead(agency, leadId) {
   try {
-    console.log('🔄 Unassigning lead:', leadId);
+    console.log('🔄 Unassigning lead:', leadId, 'for agency:', agency);
 
-    const result = await updateLeadInAirtable(leadId, {
+    const result = await updateLeadInAirtable(agency, leadId, {
       Agent_en_charge: '', // Vider le champ agent
       Date_prise_en_charge: '', // Vider la date
       Statut: 'Qualifié', // Remettre le statut à Qualifié pour qu'il retourne dans "À Traiter"
@@ -235,6 +288,7 @@ export async function unassignLead(leadId) {
   } catch (error) {
     console.error('❌ Error unassigning lead:', error);
     console.error('Error details:', {
+      agency,
       leadId,
       error: error.message,
       response: error.response
@@ -245,12 +299,15 @@ export async function unassignLead(leadId) {
 
 /**
  * Change le statut d'un lead
+ * @param {string} agency - L'identifiant de l'agence
+ * @param {string} leadId - L'ID du lead
+ * @param {string} newStatus - Le nouveau statut
  */
-export async function updateLeadStatus(leadId, newStatus) {
+export async function updateLeadStatus(agency, leadId, newStatus) {
   try {
-    console.log('🔄 Updating lead status:', leadId, 'to', newStatus);
+    console.log('🔄 Updating lead status:', leadId, 'to', newStatus, 'for agency:', agency);
 
-    const result = await updateLeadInAirtable(leadId, {
+    const result = await updateLeadInAirtable(agency, leadId, {
       Statut: newStatus,
     });
     console.log('✅ Lead status updated successfully:', result);
@@ -263,10 +320,13 @@ export async function updateLeadStatus(leadId, newStatus) {
 
 /**
  * Marque tous les messages d'un lead comme lus
+ * @param {string} agency - L'identifiant de l'agence
+ * @param {string} leadId - L'ID du lead
+ * @param {Array} conversation - La conversation à mettre à jour
  */
-export async function markMessagesAsRead(leadId, conversation) {
+export async function markMessagesAsRead(agency, leadId, conversation) {
   try {
-    console.log('🔄 Marking messages as read for lead:', leadId);
+    console.log('🔄 Marking messages as read for lead:', leadId, 'for agency:', agency);
 
     // Marquer tous les messages comme lus
     const updatedConversation = conversation.map(msg => ({
@@ -293,7 +353,7 @@ export async function markMessagesAsRead(leadId, conversation) {
       };
     });
 
-    const result = await updateLeadInAirtable(leadId, {
+    const result = await updateLeadInAirtable(agency, leadId, {
       Conversation_JSON: JSON.stringify(n8nFormat),
     });
 

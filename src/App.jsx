@@ -65,6 +65,12 @@ function App() {
 
   // Charger les leads depuis Airtable
   useEffect(() => {
+    // Ne charger les leads que si l'utilisateur est authentifié et a une agence
+    if (!isAuthenticated || !currentUser?.agency) {
+      setLoading(false); // Important: arrêter le loading si pas authentifié
+      return;
+    }
+
     let isFirstLoad = true;
 
     async function loadLeads() {
@@ -74,7 +80,7 @@ function App() {
           setLoading(true);
         }
         setError(null);
-        const data = await fetchLeadsFromAirtable();
+        const data = await fetchLeadsFromAirtable(currentUser.agency);
         setLeads(data);
       } catch (err) {
         console.error('Erreur lors du chargement des leads:', err);
@@ -95,7 +101,7 @@ function App() {
     // Rafraîchir toutes les 30 secondes pour avoir les données à jour (en arrière-plan)
     const interval = setInterval(loadLeads, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isAuthenticated, currentUser?.agency]);
 
   // Vérifier si un utilisateur est déjà connecté (localStorage)
   useEffect(() => {
@@ -103,10 +109,23 @@ function App() {
     if (savedUser) {
       try {
         const user = JSON.parse(savedUser);
-        setCurrentUser(user);
-        setIsAuthenticated(true);
+
+        // Validation de sécurité : vérifier que l'utilisateur a tous les champs requis
+        if (user && user.agency && user.agencyName && user.email && user.name && user.role) {
+          setCurrentUser(user);
+          setIsAuthenticated(true);
+        } else {
+          // Si les données sont incomplètes, forcer la déconnexion
+          console.warn('Session invalide : données utilisateur incomplètes');
+          localStorage.removeItem('emkai_user');
+          setIsAuthenticated(false);
+          setCurrentUser(null);
+        }
       } catch (error) {
+        console.error('Erreur lors de la lecture de la session:', error);
         localStorage.removeItem('emkai_user');
+        setIsAuthenticated(false);
+        setCurrentUser(null);
       }
     }
   }, []);
@@ -152,11 +171,16 @@ function App() {
   };
 
   const handleLogout = () => {
+    // Nettoyage complet de la session
     setIsAuthenticated(false);
     setCurrentUser(null);
     setSelectedFilter(null);
     setCurrentView('a_traiter'); // Remettre sur la vue "À Traiter"
+    setLeads([]); // Vider les leads pour sécurité
+    setSelectedLeadForInfo(null); // Fermer les modales
+    setSelectedLeadForConversation(null);
     localStorage.removeItem('emkai_user');
+    console.log('✅ Déconnexion réussie');
   };
 
   const handleMarkContacted = async (leadId) => {
@@ -424,6 +448,7 @@ function App() {
         darkMode={darkMode}
         toggleDarkMode={toggleDarkMode}
         onLogout={handleLogout}
+        currentUser={currentUser}
       />
 
       {/* Sidebar */}
@@ -449,6 +474,7 @@ function App() {
               onLeadUpdate={handleLeadUpdate}
               onOpenInfoModal={setSelectedLeadForInfo}
               onOpenConversationModal={setSelectedLeadForConversation}
+              agency={currentUser?.agency}
             />
           </>
         ) : currentView === 'manager' ? (
@@ -466,6 +492,7 @@ function App() {
               onLeadUpdate={handleLeadUpdate}
               onOpenInfoModal={setSelectedLeadForInfo}
               onOpenConversationModal={setSelectedLeadForConversation}
+              agency={currentUser?.agency}
             />
           </>
         ) : (
@@ -498,6 +525,7 @@ function App() {
                     onOpenInfoModal={setSelectedLeadForInfo}
                     onOpenConversationModal={setSelectedLeadForConversation}
                     showLastMessage={currentView === 'en_cours'}
+                    agency={currentUser?.agency}
                   />
                 ))}
               </div>
@@ -519,6 +547,7 @@ function App() {
           onClose={() => setSelectedLeadForInfo(null)}
           currentUser={currentUser}
           onLeadUpdate={handleLeadUpdate}
+          agency={currentUser?.agency}
         />
       )}
 
@@ -528,6 +557,7 @@ function App() {
           onClose={() => setSelectedLeadForConversation(null)}
           currentUser={currentUser}
           onLeadUpdate={handleLeadUpdate}
+          agency={currentUser?.agency}
         />
       )}
     </div>

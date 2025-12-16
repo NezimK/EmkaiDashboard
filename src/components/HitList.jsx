@@ -2,7 +2,7 @@ import React from 'react';
 import { Target } from 'lucide-react';
 import LeadCard from './LeadCard';
 
-const HitList = ({ leads, selectedFilter, onMarkContacted, currentUser, onLeadUpdate, onOpenInfoModal, onOpenConversationModal }) => {
+const HitList = ({ leads, selectedFilter, onMarkContacted, currentUser, onLeadUpdate, onOpenInfoModal, onOpenConversationModal, agency }) => {
   // Filtrer les leads selon le filtre sélectionné
   let filteredLeads = leads;
 
@@ -69,6 +69,7 @@ const HitList = ({ leads, selectedFilter, onMarkContacted, currentUser, onLeadUp
             onLeadUpdate={onLeadUpdate}
             onOpenInfoModal={onOpenInfoModal}
             onOpenConversationModal={onOpenConversationModal}
+            agency={agency}
           />
         ))}
       </div>
