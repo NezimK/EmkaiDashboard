@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, MessageSquare, Send } from 'lucide-react';
+import { X, MessageSquare, Send, PauseCircle, PlayCircle } from 'lucide-react';
 import Toast from './Toast';
-import { updateLeadStatus, assignLeadToAgent, markMessagesAsRead } from '../services/airtable';
+import { updateLeadStatus, assignLeadToAgent, markMessagesAsRead, toggleStopAI } from '../services/airtable';
 import { sendWhatsAppMessage, isWhatsAppConfigured } from '../services/whatsapp';
 
 const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
@@ -11,6 +11,8 @@ const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate, agency })
   const [isSending, setIsSending] = useState(false);
   const [localConversation, setLocalConversation] = useState(lead.conversation || []);
   const [toast, setToast] = useState(null);
+  const [isAIPaused, setIsAIPaused] = useState(lead.stop_ai || false);
+  const [isTogglingAI, setIsTogglingAI] = useState(false);
   const conversationEndRef = useRef(null);
 
   // Fonction pour scroller vers le bas (dernier message)
@@ -154,6 +156,38 @@ const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate, agency })
     }
   };
 
+  // Toggle pause/reprise de l'IA
+  const handleToggleAI = async () => {
+    setIsTogglingAI(true);
+
+    try {
+      const newPauseValue = !isAIPaused;
+      const updatedLead = await toggleStopAI(agency, lead.id, newPauseValue);
+
+      setIsAIPaused(newPauseValue);
+
+      // Notifier le parent pour mettre à jour la liste
+      if (onLeadUpdate) {
+        onLeadUpdate(updatedLead);
+      }
+
+      setToast({
+        type: 'success',
+        message: newPauseValue ? 'IA mise en pause' : 'IA réactivée'
+      });
+
+      console.log(`✅ IA ${newPauseValue ? 'pausée' : 'réactivée'} pour le lead:`, lead.nom);
+    } catch (error) {
+      console.error('❌ Erreur lors du toggle de l\'IA:', error);
+      setToast({
+        type: 'error',
+        message: 'Erreur lors de la modification de l\'état de l\'IA'
+      });
+    } finally {
+      setIsTogglingAI(false);
+    }
+  };
+
   // Fermer la modal quand on clique sur le backdrop
   const handleBackdropClick = (e) => {
     if (e.target === e.currentTarget) {
@@ -194,12 +228,39 @@ const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate, agency })
                 <p className="text-sm text-white/80">{lead.nom}</p>
               </div>
             </div>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-white/20 rounded-lg transition-colors"
-            >
-              <X className="w-6 h-6 text-white" />
-            </button>
+            <div className="flex items-center space-x-2">
+              {/* Bouton Pause/Reprendre IA */}
+              <button
+                onClick={handleToggleAI}
+                disabled={isTogglingAI}
+                className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all font-medium ${
+                  isAIPaused
+                    ? 'bg-green-500 hover:bg-green-600 text-white'
+                    : 'bg-orange-500 hover:bg-orange-600 text-white'
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
+                title={isAIPaused ? 'Réactiver l\'IA' : 'Mettre l\'IA en pause'}
+              >
+                {isAIPaused ? (
+                  <>
+                    <PlayCircle className="w-5 h-5" />
+                    <span className="text-sm">Reprendre IA</span>
+                  </>
+                ) : (
+                  <>
+                    <PauseCircle className="w-5 h-5" />
+                    <span className="text-sm">Pause IA</span>
+                  </>
+                )}
+              </button>
+
+              {/* Bouton Fermer */}
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+              >
+                <X className="w-6 h-6 text-white" />
+              </button>
+            </div>
           </div>
         </div>
 
