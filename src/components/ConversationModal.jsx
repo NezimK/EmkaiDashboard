@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, MessageSquare, Send } from 'lucide-react';
 import Toast from './Toast';
 import { updateLeadStatus, assignLeadToAgent, markMessagesAsRead } from '../services/airtable';
+import { sendWhatsAppMessage, isWhatsAppConfigured } from '../services/whatsapp';
 
 const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
   if (!lead) return null;
@@ -86,22 +87,19 @@ const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate, agency })
     setIsSending(true);
 
     try {
-      // Appel API vers le webhook n8n
-      const response = await fetch('https://n8n.emkai.fr/webhook/2a714219-3cac-4997-adc6-7ba0ae54a149', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          phone: lead.phone,
-          message: currentMessage,
-          recordId: lead.id
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Échec de l\'envoi du message');
+      // Vérifier que WhatsApp est configuré pour cette agence
+      if (!isWhatsAppConfigured(agency)) {
+        throw new Error('WhatsApp n\'est pas configuré pour cette agence');
       }
+
+      // Envoyer le message via le service WhatsApp (qui utilise le bon webhook n8n)
+      await sendWhatsAppMessage(
+        agency,
+        lead.id,
+        lead.phone,
+        currentMessage,
+        currentUser?.name || 'Agent'
+      );
 
       // Si le lead n'est pas assigné à l'utilisateur actuel, l'assigner
       if (!isAssignedToMe && currentUser) {
