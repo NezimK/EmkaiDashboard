@@ -103,17 +103,10 @@ function App() {
     return () => clearInterval(interval);
   }, [isAuthenticated, currentUser?.agency]);
 
-  // Vérifier si un utilisateur est déjà connecté (localStorage)
-  // Note: La reconnexion automatique est désactivée pour forcer le login à chaque visite
+  // Vérifier si un utilisateur est déjà connecté (sessionStorage)
+  // sessionStorage : garde la session pendant les rafraîchissements, mais déconnecte à la fermeture du navigateur
   useEffect(() => {
-    // DÉSACTIVÉ : Toujours forcer le login
-    // Nettoyer toute session existante au chargement
-    localStorage.removeItem('emkai_user');
-    setIsAuthenticated(false);
-    setCurrentUser(null);
-
-    /* ANCIEN CODE (reconnexion automatique) :
-    const savedUser = localStorage.getItem('emkai_user');
+    const savedUser = sessionStorage.getItem('emkai_user');
     if (savedUser) {
       try {
         const user = JSON.parse(savedUser);
@@ -125,18 +118,17 @@ function App() {
         } else {
           // Si les données sont incomplètes, forcer la déconnexion
           console.warn('Session invalide : données utilisateur incomplètes');
-          localStorage.removeItem('emkai_user');
+          sessionStorage.removeItem('emkai_user');
           setIsAuthenticated(false);
           setCurrentUser(null);
         }
       } catch (error) {
         console.error('Erreur lors de la lecture de la session:', error);
-        localStorage.removeItem('emkai_user');
+        sessionStorage.removeItem('emkai_user');
         setIsAuthenticated(false);
         setCurrentUser(null);
       }
     }
-    */
   }, []);
 
   // Gérer le dark mode
@@ -172,8 +164,8 @@ function App() {
       setCurrentUser(result.user);
       setIsAuthenticated(true);
       setLoginError('');
-      // Sauvegarder dans localStorage
-      localStorage.setItem('emkai_user', JSON.stringify(result.user));
+      // Sauvegarder dans sessionStorage (se vide à la fermeture du navigateur)
+      sessionStorage.setItem('emkai_user', JSON.stringify(result.user));
     } else {
       setLoginError(result.error);
     }
@@ -188,7 +180,7 @@ function App() {
     setLeads([]); // Vider les leads pour sécurité
     setSelectedLeadForInfo(null); // Fermer les modales
     setSelectedLeadForConversation(null);
-    localStorage.removeItem('emkai_user');
+    sessionStorage.removeItem('emkai_user');
     console.log('✅ Déconnexion réussie');
   };
 
