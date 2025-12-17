@@ -8,6 +8,7 @@ import LeadCard from './components/LeadCard';
 import LeadModal from './components/LeadModal';
 import ConversationModal from './components/ConversationModal';
 import ManagerView from './components/ManagerView';
+import VisitsCalendar from './components/VisitsCalendar';
 import Login from './components/Login';
 import FilterBar from './components/FilterBar';
 import { fetchLeadsFromAirtable } from './services/airtable';
@@ -339,12 +340,8 @@ function App() {
     // Appliquer le filtre de vue si présent
     if (viewFilter) {
       if (currentView === 'en_cours') {
-        // Filtrer par statut dans "En Découverte"
-        if (viewFilter === 'CONTACTE' || viewFilter === 'EN_DECOUVERTE') {
-          baseLeads = baseLeads.filter(lead => lead.statut === viewFilter);
-        }
-        // Filtrer par score
-        else if (viewFilter === 'CHAUD' || viewFilter === 'TIEDE' || viewFilter === 'FROID') {
+        // Filtrer par score uniquement
+        if (viewFilter === 'CHAUD' || viewFilter === 'TIEDE' || viewFilter === 'FROID') {
           baseLeads = baseLeads.filter(lead => lead.score === viewFilter);
         }
       } else if (currentView === 'relance') {
@@ -364,11 +361,6 @@ function App() {
 
     if (currentView === 'en_cours') {
       return [
-        {
-          value: 'CONTACTE',
-          label: 'Contacté',
-          count: baseLeads.filter(l => l.statut === 'CONTACTE').length
-        },
         {
           value: 'CHAUD',
           label: 'Chaud',
@@ -513,29 +505,43 @@ function App() {
               />
             )}
 
-            {/* Liste des prospects filtrés selon la vue */}
-            {filteredLeads.length > 0 ? (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                {filteredLeads.map(lead => (
-                  <LeadCard
-                    key={lead.id}
-                    lead={lead}
-                    onMarkContacted={handleMarkContacted}
-                    currentUser={currentUser}
-                    onLeadUpdate={handleLeadUpdate}
-                    onOpenInfoModal={setSelectedLeadForInfo}
-                    onOpenConversationModal={setSelectedLeadForConversation}
-                    showLastMessage={currentView === 'en_cours'}
-                    agency={currentUser?.agency}
-                  />
-                ))}
-              </div>
+            {/* Vue spéciale pour les visites avec calendrier */}
+            {currentView === 'visites' ? (
+              <VisitsCalendar
+                leads={filteredLeads}
+                currentUser={currentUser}
+                onLeadUpdate={handleLeadUpdate}
+                onOpenInfoModal={setSelectedLeadForInfo}
+                onOpenConversationModal={setSelectedLeadForConversation}
+                agency={currentUser?.agency}
+              />
             ) : (
-              <div className="text-center py-12 bg-gray-50 dark:bg-dark-card rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-700">
-                <p className="text-gray-600 dark:text-gray-400">
-                  Aucun prospect dans cette vue pour le moment
-                </p>
-              </div>
+              /* Liste des prospects filtrés selon la vue */
+              <>
+                {filteredLeads.length > 0 ? (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                    {filteredLeads.map(lead => (
+                      <LeadCard
+                        key={lead.id}
+                        lead={lead}
+                        onMarkContacted={handleMarkContacted}
+                        currentUser={currentUser}
+                        onLeadUpdate={handleLeadUpdate}
+                        onOpenInfoModal={setSelectedLeadForInfo}
+                        onOpenConversationModal={setSelectedLeadForConversation}
+                        showLastMessage={currentView === 'en_cours'}
+                        agency={currentUser?.agency}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 bg-gray-50 dark:bg-dark-card rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-700">
+                    <p className="text-gray-600 dark:text-gray-400">
+                      Aucun prospect dans cette vue pour le moment
+                    </p>
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
