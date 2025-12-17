@@ -180,7 +180,7 @@ function parseLeadFromAirtable(record) {
     score: fields.Score || 'TIEDE',
     statut: statut,
     summary: fields.Notes || fields.Summary || '',
-    stop_ai: fields.Stop_AI || false,
+    stop_ai: fields.PAUSE_IA || false,
     phone: fields.Phone || '',
     contacted: statut === 'CONTACTE', // Calculé depuis le statut
     budget: fields.Financement || fields.Budget || 'Non défini',
@@ -361,6 +361,28 @@ export async function markMessagesAsRead(agency, leadId, conversation) {
     return result;
   } catch (error) {
     console.error('❌ Error marking messages as read:', error);
+    throw error;
+  }
+}
+
+/**
+ * Toggle le champ Stop_AI pour mettre en pause/reprendre l'IA
+ * @param {string} agency - L'identifiant de l'agence
+ * @param {string} leadId - L'ID du lead
+ * @param {boolean} stopValue - true pour mettre en pause l'IA, false pour la reprendre
+ */
+export async function toggleStopAI(agency, leadId, stopValue) {
+  try {
+    console.log(`🔄 ${stopValue ? 'Pausing' : 'Resuming'} AI for lead:`, leadId, 'for agency:', agency);
+
+    const result = await updateLeadInAirtable(agency, leadId, {
+      PAUSE_IA: stopValue,
+    });
+
+    console.log(`✅ AI ${stopValue ? 'paused' : 'resumed'} successfully`);
+    return result;
+  } catch (error) {
+    console.error('❌ Error toggling Stop_AI:', error);
     throw error;
   }
 }
