@@ -104,7 +104,15 @@ function App() {
   }, [isAuthenticated, currentUser?.agency]);
 
   // Vérifier si un utilisateur est déjà connecté (localStorage)
+  // Note: La reconnexion automatique est désactivée pour forcer le login à chaque visite
   useEffect(() => {
+    // DÉSACTIVÉ : Toujours forcer le login
+    // Nettoyer toute session existante au chargement
+    localStorage.removeItem('emkai_user');
+    setIsAuthenticated(false);
+    setCurrentUser(null);
+
+    /* ANCIEN CODE (reconnexion automatique) :
     const savedUser = localStorage.getItem('emkai_user');
     if (savedUser) {
       try {
@@ -128,6 +136,7 @@ function App() {
         setCurrentUser(null);
       }
     }
+    */
   }, []);
 
   // Gérer le dark mode
