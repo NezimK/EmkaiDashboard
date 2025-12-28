@@ -31,7 +31,7 @@ const Login = ({ onLogin, error: propError }) => {
         {/* Logo */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-2">
-            <span className="text-accent">EMKAI</span>
+            <span className="text-accent">IMMO</span>
             <span className="text-white ml-2">Copilot</span>
           </h1>
           <p className="text-gray-400">Connectez-vous à votre compte</p>
@@ -174,7 +174,7 @@ const Login = ({ onLogin, error: propError }) => {
 
         {/* Footer */}
         <p className="text-center text-gray-500 text-sm mt-6">
-          © 2025 EMKAI Copilot - Tous droits réservés
+          © 2025 IMMO Copilot - Tous droits réservés
         </p>
       </div>
     </div>

@@ -9,6 +9,7 @@ import LeadModal from './components/LeadModal';
 import ConversationModal from './components/ConversationModal';
 import ManagerView from './components/ManagerView';
 import VisitsCalendar from './components/VisitsCalendar';
+import Settings from './components/Settings';
 import Login from './components/Login';
 import FilterBar from './components/FilterBar';
 import { fetchLeadsFromAirtable } from './services/airtable';
@@ -24,7 +25,7 @@ function App() {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [currentView, setCurrentView] = useState('a_traiter'); // 'a_traiter', 'en_cours', 'visites', 'relance', 'manager'
+  const [currentView, setCurrentView] = useState('a_traiter'); // 'a_traiter', 'en_cours', 'visites', 'relance', 'manager', 'settings'
   const [selectedLeadForInfo, setSelectedLeadForInfo] = useState(null); // Lead sélectionné pour la modal Info
   const [selectedLeadForConversation, setSelectedLeadForConversation] = useState(null); // Lead sélectionné pour la modal Conversation
 
@@ -453,7 +454,15 @@ function App() {
 
       {/* Main content avec padding left pour la sidebar */}
       <main className="ml-64 px-4 sm:px-6 lg:px-8 py-8">
-        {currentView === 'a_traiter' ? (
+        {currentView === 'settings' ? (
+          /* Vue Réglages */
+          <Settings
+            currentUser={currentUser}
+            agency={currentUser?.agency}
+            onLogout={handleLogout}
+            onUserUpdate={setCurrentUser}
+          />
+        ) : currentView === 'a_traiter' ? (
           <>
             {/* Cockpit KPIs - uniquement sur la vue "À Traiter" */}
             <Cockpit kpis={kpis} selectedFilter={selectedFilter} onFilterChange={handleFilterChange} />

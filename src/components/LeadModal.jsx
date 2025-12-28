@@ -5,6 +5,7 @@ import { mockUsers } from '../data/users';
 import ConfirmDialog from './ConfirmDialog';
 import AgentSelector from './AgentSelector';
 import StatusSelector from './StatusSelector';
+import ScheduleVisitModal from './ScheduleVisitModal';
 
 const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
   if (!lead) return null;
@@ -15,6 +16,7 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
   const [showUnassignConfirm, setShowUnassignConfirm] = useState(false);
   const [showAgentSelector, setShowAgentSelector] = useState(false);
   const [showStatusSelector, setShowStatusSelector] = useState(false);
+  const [showScheduleVisit, setShowScheduleVisit] = useState(false);
 
   // Déterminer le statut d'assignation
   const isAssignedToMe = lead.agent_en_charge && currentUser && lead.agent_en_charge === currentUser.name;
@@ -169,9 +171,16 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
           {(isAssignedToMe || isManager) && (
             <div className="flex items-center space-x-2">
               <button
+                onClick={() => setShowScheduleVisit(true)}
+                className="flex items-center space-x-2 px-4 py-2 bg-accent/20 hover:bg-accent/30 text-white text-sm font-medium rounded-lg transition-colors border border-accent/30"
+              >
+                <Calendar className="w-4 h-4" />
+                <span>{lead.date_visite ? 'Modifier visite' : 'Programmer visite'}</span>
+              </button>
+              <button
                 onClick={() => setShowStatusSelector(true)}
                 disabled={isAssigning}
-                className="flex items-center space-x-2 px-4 py-2 bg-white/20 hover:bg-white/30 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center space-x-2 px-4 py-2 bg-white/20 hover:bg-white/30 text-white text-sm font-medium rounded-lg transition-colors border border-white/30 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>Changer statut</span>
@@ -184,20 +193,20 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
         <div className="overflow-y-auto max-h-[calc(90vh-100px)] p-6">
           {/* Bandeau d'assignation */}
           {isFree && (
-            <div className="mb-6 bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 p-4 rounded-lg">
+            <div className="mb-6 bg-accent/10 dark:bg-accent/20 border-l-4 border-accent p-4 rounded-lg">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
-                  <UserCheck className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                  <UserCheck className="w-5 h-5 text-accent dark:text-accent" />
                   <div>
-                    <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">Dossier disponible</p>
-                    <p className="text-xs text-blue-700 dark:text-blue-300">Ce prospect n'est assigné à personne</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">Dossier disponible</p>
+                    <p className="text-xs text-gray-600 dark:text-gray-300">Ce prospect n'est assigné à personne</p>
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
                   <button
                     onClick={handleAssignToMe}
                     disabled={isAssigning}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                    className="px-4 py-2 bg-accent hover:bg-accent-dark text-black text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
                   >
                     <UserCheck className="w-4 h-4" />
                     <span>{isAssigning ? 'Prise en cours...' : 'Prendre le dossier'}</span>
@@ -254,7 +263,7 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
                       <button
                         onClick={handleTakeOverClick}
                         disabled={isAssigning}
-                        className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
+                        className="px-3 py-2 bg-accent hover:bg-accent-dark text-black text-xs font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
                         title="Prendre le dossier"
                       >
                         <UserCheck className="w-3 h-3" />
@@ -416,6 +425,16 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
         onSelect={handleStatusChange}
         currentStatus={lead.statut}
       />
+
+      {/* Modal de programmation de visite */}
+      {showScheduleVisit && (
+        <ScheduleVisitModal
+          lead={lead}
+          onClose={() => setShowScheduleVisit(false)}
+          onLeadUpdate={onLeadUpdate}
+          agency={agency}
+        />
+      )}
     </div>
   );
 };

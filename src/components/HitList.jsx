@@ -26,13 +26,16 @@ const HitList = ({ leads, selectedFilter, onMarkContacted, currentUser, onLeadUp
     if (selectedFilter) {
       // Si un filtre est actif, filtrer par score
       filteredLeads = filteredLeads.filter(lead => lead.score === selectedFilter);
-    } else {
-      // Sinon, afficher uniquement les leads qualifiés et non-stoppés
-      filteredLeads = filteredLeads.filter(lead =>
-        lead.statut === "QUALIFIE" && !lead.stop_ai
-      );
     }
+    // Sinon, afficher TOUS les leads entrants (pas de filtre supplémentaire)
   }
+
+  // Trier par date de création : les plus ANCIENS en premier (fenêtre 24h)
+  filteredLeads = [...filteredLeads].sort((a, b) => {
+    const dateA = new Date(a.createdTime);
+    const dateB = new Date(b.createdTime);
+    return dateA - dateB; // Ordre croissant (les plus anciens en premier)
+  });
 
   // Déterminer le titre selon le filtre
   const getTitle = () => {

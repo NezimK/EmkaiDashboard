@@ -189,6 +189,7 @@ function parseLeadFromAirtable(record) {
     delai: fields.Délai || fields.Delai || 'Non défini',
     conversation: conversation,
     agent_en_charge: fields.Agent_en_charge || fields.agent_en_charge || null, // Agent assigné au lead
+    date_visite: fields.date_visite || null, // Date et heure de la visite programmée
     createdTime: record.createdTime || new Date().toISOString(), // Timestamp de création depuis Airtable
   };
 }
@@ -383,6 +384,49 @@ export async function toggleStopAI(agency, leadId, stopValue) {
     return result;
   } catch (error) {
     console.error('❌ Error toggling Stop_AI:', error);
+    throw error;
+  }
+}
+
+/**
+ * Programme une visite pour un lead
+ * @param {string} agency - L'identifiant de l'agence
+ * @param {string} leadId - L'ID du lead
+ * @param {string} visitDate - La date et heure de la visite (ISO string)
+ */
+export async function scheduleVisit(agency, leadId, visitDate) {
+  try {
+    console.log(`🔄 Scheduling visit for lead:`, leadId, 'on', visitDate, 'for agency:', agency);
+
+    const result = await updateLeadInAirtable(agency, leadId, {
+      date_visite: visitDate,
+      Statut: 'Visite Programmée', // Changer automatiquement le statut
+    });
+
+    console.log(`✅ Visit scheduled successfully`);
+    return result;
+  } catch (error) {
+    console.error('❌ Error scheduling visit:', error);
+    throw error;
+  }
+}
+
+/**
+ * Annuler une visite programmée
+ */
+export async function cancelVisit(agency, leadId) {
+  try {
+    console.log(`🔄 Canceling visit for lead:`, leadId, 'for agency:', agency);
+
+    const result = await updateLeadInAirtable(agency, leadId, {
+      date_visite: null,
+      Statut: 'Qualifié', // Remettre au statut Qualifié
+    });
+
+    console.log(`✅ Visit canceled successfully`);
+    return result;
+  } catch (error) {
+    console.error('❌ Error canceling visit:', error);
     throw error;
   }
 }

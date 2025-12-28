@@ -48,8 +48,8 @@ const VisitsCalendar = ({ leads, currentUser, onLeadUpdate, onOpenInfoModal, onO
     if (!date) return [];
 
     return leads.filter(lead => {
-      if (!lead.createdTime) return false;
-      const leadDate = new Date(lead.createdTime);
+      if (!lead.date_visite) return false;
+      const leadDate = new Date(lead.date_visite);
       return (
         leadDate.getDate() === date.getDate() &&
         leadDate.getMonth() === date.getMonth() &&

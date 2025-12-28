@@ -30,8 +30,8 @@ const ConfirmDialog = ({ isOpen, onClose, onConfirm, title, message, confirmText
         };
       default:
         return {
-          icon: 'text-blue-600 dark:text-blue-400',
-          button: 'bg-blue-600 hover:bg-blue-700 text-white'
+          icon: 'text-accent dark:text-accent',
+          button: 'bg-accent hover:bg-accent-dark text-black font-semibold'
         };
     }
   };

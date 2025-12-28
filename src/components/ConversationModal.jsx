@@ -308,9 +308,9 @@ const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate, agency })
                 } else if (isAgent) {
                   senderConfig = {
                     name: currentUser?.name || 'Agent Immobilier',
-                    bgColor: 'bg-blue-500 dark:bg-blue-600',
-                    textColor: 'text-white',
-                    labelColor: 'text-white/80',
+                    bgColor: 'bg-accent dark:bg-accent',
+                    textColor: 'text-black',
+                    labelColor: 'text-black/80',
                     alignment: 'justify-end',
                     roundedCorner: 'rounded-br-sm',
                     timestampAlign: 'text-right'

@@ -70,3 +70,39 @@ export const validateLogin = (email, password) => {
   }
   return { success: false, error: "Email ou mot de passe incorrect" };
 };
+
+// Fonction pour mettre à jour l'email d'un utilisateur
+export const updateUserEmail = (userId, newEmail) => {
+  const userIndex = mockUsers.findIndex(u => u.id === userId);
+  if (userIndex === -1) {
+    return { success: false, error: "Utilisateur non trouvé" };
+  }
+
+  // Vérifier si l'email est déjà utilisé
+  const emailExists = mockUsers.some(u => u.email === newEmail && u.id !== userId);
+  if (emailExists) {
+    return { success: false, error: "Cet email est déjà utilisé" };
+  }
+
+  // Mettre à jour l'email
+  mockUsers[userIndex].email = newEmail;
+  const { password: _, ...userWithoutPassword } = mockUsers[userIndex];
+  return { success: true, user: userWithoutPassword };
+};
+
+// Fonction pour mettre à jour le mot de passe d'un utilisateur
+export const updateUserPassword = (userId, currentPassword, newPassword) => {
+  const userIndex = mockUsers.findIndex(u => u.id === userId);
+  if (userIndex === -1) {
+    return { success: false, error: "Utilisateur non trouvé" };
+  }
+
+  // Vérifier le mot de passe actuel
+  if (mockUsers[userIndex].password !== currentPassword) {
+    return { success: false, error: "Mot de passe actuel incorrect" };
+  }
+
+  // Mettre à jour le mot de passe
+  mockUsers[userIndex].password = newPassword;
+  return { success: true };
+};

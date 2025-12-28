@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Users, Calendar, RotateCcw, Archive, Shield } from 'lucide-react';
+import { Home, Users, Calendar, RotateCcw, Archive, Shield, Settings } from 'lucide-react';
 
 const Sidebar = ({ currentView, onNavigate, currentUser }) => {
   const navigationItems = [
@@ -36,17 +36,24 @@ const Sidebar = ({ currentView, onNavigate, currentUser }) => {
   ];
 
   // Ajouter la vue Manager si l'utilisateur est manager
-  const allItems = currentUser?.role === 'manager'
-    ? [
-        ...navigationItems,
-        {
-          id: 'manager',
-          label: 'Vue Manager',
-          icon: Shield,
-          color: 'text-purple-600 dark:text-purple-400'
-        }
-      ]
-    : navigationItems;
+  let allItems = [...navigationItems];
+
+  if (currentUser?.role === 'manager') {
+    allItems.push({
+      id: 'manager',
+      label: 'Vue Manager',
+      icon: Shield,
+      color: 'text-purple-600 dark:text-purple-400'
+    });
+  }
+
+  // Ajouter Réglages en dernier
+  allItems.push({
+    id: 'settings',
+    label: 'Réglages',
+    icon: Settings,
+    color: 'text-gray-600 dark:text-gray-400'
+  });
 
   return (
     <aside className="fixed left-0 top-16 h-[calc(100vh-4rem)] w-64 bg-white dark:bg-dark-card border-r border-gray-200 dark:border-gray-800 overflow-y-auto">
@@ -55,6 +62,7 @@ const Sidebar = ({ currentView, onNavigate, currentUser }) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;
           const isManagerView = item.id === 'manager';
+          const isSettingsView = item.id === 'settings';
 
           return (
             <button
@@ -66,7 +74,7 @@ const Sidebar = ({ currentView, onNavigate, currentUser }) => {
                   ? 'bg-accent/10 border-l-4 border-accent'
                   : 'hover:bg-gray-100 dark:hover:bg-gray-800 border-l-4 border-transparent'
                 }
-                ${isManagerView ? 'mt-4 border-t border-gray-200 dark:border-gray-800 pt-4' : ''}
+                ${isManagerView || isSettingsView ? 'mt-4 border-t border-gray-200 dark:border-gray-800 pt-4' : ''}
               `}
             >
               <Icon className={`w-5 h-5 ${isActive ? item.color : 'text-gray-500 dark:text-gray-400'}`} />
