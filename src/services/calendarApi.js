@@ -1,7 +1,36 @@
-// Backend API URL
+/**
+ * @fileoverview Service API pour la gestion de Google Calendar
+ * @module services/calendarApi
+ *
+ * @description
+ * Interface de communication avec le backend Express pour Google Calendar OAuth2.
+ * Gère l'authentification, la création/suppression d'événements et la vérification du statut.
+ *
+ * @author IMMO Copilot Team
+ * @version 1.0.0
+ */
+
+// ============================================================
+// CONFIGURATION
+// ============================================================
+
+// Backend API URL (configurable via .env)
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
-// Get Google OAuth URL
+// ============================================================
+// AUTHENTICATION
+// ============================================================
+
+/**
+ * Obtenir l'URL d'authentification Google OAuth2
+ *
+ * @async
+ * @param {string} userId - Identifiant unique de l'utilisateur
+ * @param {string} userEmail - Email de l'utilisateur
+ * @param {string} agency - Identifiant de l'agence (AGENCY_A ou AGENCY_B)
+ * @returns {Promise<string>} URL d'autorisation Google OAuth
+ * @throws {Error} Si la requête échoue
+ */
 export async function getGoogleAuthUrl(userId, userEmail, agency) {
   try {
     const response = await fetch(`${API_URL}/api/auth/google/url`, {
@@ -24,7 +53,13 @@ export async function getGoogleAuthUrl(userId, userEmail, agency) {
   }
 }
 
-// Check Google Calendar connection status
+/**
+ * Vérifier si Google Calendar est connecté pour un utilisateur
+ *
+ * @async
+ * @param {string} userId - Identifiant unique de l'utilisateur
+ * @returns {Promise<boolean>} true si connecté, false sinon
+ */
 export async function checkGoogleCalendarStatus(userId) {
   try {
     const response = await fetch(`${API_URL}/api/auth/google/status`, {
@@ -47,7 +82,15 @@ export async function checkGoogleCalendarStatus(userId) {
   }
 }
 
-// Disconnect Google Calendar
+/**
+ * Déconnecter Google Calendar pour un utilisateur
+ * Supprime les tokens OAuth stockés dans le backend
+ *
+ * @async
+ * @param {string} userId - Identifiant unique de l'utilisateur
+ * @returns {Promise<boolean>} true si la déconnexion réussit
+ * @throws {Error} Si la déconnexion échoue
+ */
 export async function disconnectGoogleCalendar(userId) {
   try {
     const response = await fetch(`${API_URL}/api/auth/google/disconnect`, {
@@ -69,7 +112,23 @@ export async function disconnectGoogleCalendar(userId) {
   }
 }
 
-// Create calendar event
+// ============================================================
+// CALENDAR EVENTS
+// ============================================================
+
+/**
+ * Créer un événement dans Google Calendar
+ *
+ * @async
+ * @param {string} userId - Identifiant unique de l'utilisateur
+ * @param {Object} eventDetails - Détails de l'événement
+ * @param {string} eventDetails.title - Titre de l'événement
+ * @param {string} eventDetails.description - Description de l'événement
+ * @param {string} eventDetails.startDateTime - Date/heure de début (ISO 8601)
+ * @param {string} eventDetails.endDateTime - Date/heure de fin (ISO 8601)
+ * @returns {Promise<Object>} Objet contenant eventId et eventLink
+ * @throws {Error} Si la création échoue
+ */
 export async function createGoogleCalendarEvent(userId, eventDetails) {
   try {
     const response = await fetch(`${API_URL}/api/calendar/event`, {
@@ -93,7 +152,15 @@ export async function createGoogleCalendarEvent(userId, eventDetails) {
   }
 }
 
-// Delete calendar event
+/**
+ * Supprimer un événement de Google Calendar
+ *
+ * @async
+ * @param {string} userId - Identifiant unique de l'utilisateur
+ * @param {string} eventId - Identifiant de l'événement Google Calendar
+ * @returns {Promise<boolean>} true si la suppression réussit
+ * @throws {Error} Si la suppression échoue
+ */
 export async function deleteGoogleCalendarEvent(userId, eventId) {
   try {
     const response = await fetch(`${API_URL}/api/calendar/event/delete`, {

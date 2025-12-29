@@ -1,7 +1,38 @@
+/**
+ * @fileoverview Composant Toast pour les notifications système
+ * @module components/Toast
+ *
+ * @description
+ * Composant de notification temporaire (toast) avec fermeture automatique.
+ * Supporte 3 types : success, error, warning
+ *
+ * @author IMMO Copilot Team
+ * @version 1.0.0
+ */
+
 import React, { useEffect } from 'react';
 import { CheckCircle2, XCircle, X } from 'lucide-react';
 
+/**
+ * Composant Toast pour afficher des notifications temporaires
+ *
+ * @component
+ * @param {Object} props - Propriétés du composant
+ * @param {'success'|'error'|'warning'} props.type - Type de notification (défaut: 'success')
+ * @param {string} props.message - Message à afficher
+ * @param {Function} props.onClose - Callback de fermeture
+ * @param {number} props.duration - Durée d'affichage en ms (défaut: 3000, 0 = pas de fermeture auto)
+ * @returns {JSX.Element} Composant toast
+ */
 const Toast = ({ type = 'success', message, onClose, duration = 3000 }) => {
+  // ============================================================
+  // EFFECTS
+  // ============================================================
+
+  /**
+   * Auto-fermeture du toast après la durée spécifiée
+   * Si duration = 0, le toast reste affiché jusqu'à fermeture manuelle
+   */
   useEffect(() => {
     if (duration > 0) {
       const timer = setTimeout(() => {
@@ -10,6 +41,10 @@ const Toast = ({ type = 'success', message, onClose, duration = 3000 }) => {
       return () => clearTimeout(timer);
     }
   }, [duration, onClose]);
+
+  // ============================================================
+  // CONFIGURATION DES STYLES PAR TYPE
+  // ============================================================
 
   const config = {
     success: {

@@ -1,21 +1,65 @@
+/**
+ * @fileoverview Composant de dialogue de confirmation
+ * @module components/ConfirmDialog
+ *
+ * @description
+ * Modal de confirmation pour les actions critiques.
+ * Supporte 3 variantes : default (gold), danger (red), warning (orange)
+ *
+ * @author IMMO Copilot Team
+ * @version 1.0.0
+ */
+
 import React from 'react';
 import { AlertCircle, X } from 'lucide-react';
 
+/**
+ * Dialogue de confirmation pour actions utilisateur
+ *
+ * @component
+ * @param {Object} props - Propriétés du composant
+ * @param {boolean} props.isOpen - État d'ouverture du dialogue
+ * @param {Function} props.onClose - Callback de fermeture
+ * @param {Function} props.onConfirm - Callback de confirmation
+ * @param {string} props.title - Titre du dialogue
+ * @param {string} props.message - Message de confirmation
+ * @param {string} props.confirmText - Texte du bouton de confirmation (défaut: 'Confirmer')
+ * @param {string} props.cancelText - Texte du bouton d'annulation (défaut: 'Annuler')
+ * @param {'default'|'danger'|'warning'} props.variant - Variante de couleur (défaut: 'default')
+ * @returns {JSX.Element|null} Composant dialogue ou null si fermé
+ */
 const ConfirmDialog = ({ isOpen, onClose, onConfirm, title, message, confirmText = 'Confirmer', cancelText = 'Annuler', variant = 'default' }) => {
   if (!isOpen) return null;
 
+  // ============================================================
+  // EVENT HANDLERS
+  // ============================================================
+
+  /**
+   * Ferme le dialogue si le clic est sur le backdrop (pas sur le contenu)
+   */
   const handleBackdropClick = (e) => {
     if (e.target === e.currentTarget) {
       onClose();
     }
   };
 
+  /**
+   * Exécute l'action de confirmation et ferme le dialogue
+   */
   const handleConfirm = () => {
     onConfirm();
     onClose();
   };
 
-  // Couleurs selon le variant
+  // ============================================================
+  // STYLES DYNAMIQUES PAR VARIANTE
+  // ============================================================
+
+  /**
+   * Retourne les classes CSS en fonction de la variante
+   * @returns {Object} Objet contenant les classes pour icon et button
+   */
   const getVariantStyles = () => {
     switch (variant) {
       case 'danger':

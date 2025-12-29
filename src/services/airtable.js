@@ -43,8 +43,6 @@ export async function fetchLeadsFromAirtable(agency) {
   try {
     const { token, baseId } = getAgencyConfig(agency);
 
-    console.log(`🔄 Fetching leads for agency: ${agency}`);
-
     const response = await fetch(
       `https://api.airtable.com/v0/${baseId}/${TABLE_NAME}`,
       {
@@ -59,8 +57,6 @@ export async function fetchLeadsFromAirtable(agency) {
     }
 
     const data = await response.json();
-
-    console.log(`✅ Fetched ${data.records.length} leads for agency: ${agency}`);
 
     return data.records.map((record) => parseLeadFromAirtable(record));
   } catch (error) {
@@ -78,36 +74,20 @@ function parseLeadFromAirtable(record) {
   // Construire le nom complet (Prénom + Nom)
   const nom = `${fields.Prénom || ''} ${fields.Nom || ''}`.trim() || 'Sans nom';
 
-  // Log pour debug - voir tous les champs disponibles
-  console.log('📊 Champs Airtable pour', nom, ':', fields);
-
   // Parser la conversation JSON
   let conversation = [];
   if (fields.Conversation_JSON) {
     try {
       const parsed = JSON.parse(fields.Conversation_JSON);
-      console.log('🔍 [DEBUG] Raw Conversation_JSON for', nom, ':', parsed);
-      console.log('🔍 [DEBUG] Number of messages in Conversation_JSON:', parsed.length);
 
       // Adapter le format n8n vers le format de l'app
       const filtered = parsed.filter((msg) => {
         // Filtrer les messages système (marqueurs de qualification)
-        if (!msg.text) {
-          console.log('⚠️ [FILTERED] Message without text:', msg);
-          return false;
-        }
-        if (msg.text.includes('--- QUALIFICATION')) {
-          console.log('⚠️ [FILTERED] Qualification marker:', msg.text.substring(0, 50));
-          return false;
-        }
-        if (msg.text.includes('---')) {
-          console.log('⚠️ [FILTERED] System marker:', msg.text.substring(0, 50));
-          return false;
-        }
+        if (!msg.text) return false;
+        if (msg.text.includes('--- QUALIFICATION')) return false;
+        if (msg.text.includes('---')) return false;
         return true;
       });
-
-      console.log('🔍 [DEBUG] Messages after filtering:', filtered.length);
 
       conversation = filtered.map((msg) => {
         // Mapper les roles n8n vers les senders de l'app
@@ -120,8 +100,6 @@ function parseLeadFromAirtable(record) {
           sender = 'lead'; // Le prospect
         }
 
-        console.log('💬 [MESSAGE]', msg.role, '→', sender, ':', msg.text.substring(0, 50));
-
         return {
           sender: sender,
           message: msg.text,
@@ -129,20 +107,15 @@ function parseLeadFromAirtable(record) {
           read: msg.read !== undefined ? msg.read : (sender !== 'lead'), // Les messages du prospect sont non lus par défaut
         };
       });
-
-      console.log('✅ [DEBUG] Final conversation array length:', conversation.length);
     } catch (error) {
       console.error('❌ Error parsing conversation JSON for lead:', nom, error);
       conversation = [];
     }
-  } else {
-    console.log('⚠️ [DEBUG] No Conversation_JSON field for', nom);
   }
 
   // Mapper le statut Airtable vers le statut de l'app
   // Si le champ Statut est vide/undefined, le lead est considéré comme "EN_COURS"
   let statut = fields.Statut || 'EN_COURS';
-  console.log('🔍 DEBUG Lead:', nom, '| Raw Statut from Airtable:', `"${fields.Statut}"`, '| Score:', fields.Score);
 
   // Normaliser les statuts de différentes variantes vers le format uniforme de l'app
   const statusMapping = {
@@ -170,8 +143,6 @@ function parseLeadFromAirtable(record) {
   if (statusMapping[statut]) {
     statut = statusMapping[statut];
   }
-
-  console.log('✅ Mapped Statut:', statut);
 
   return {
     id: record.id,

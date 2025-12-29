@@ -1,26 +1,63 @@
+/**
+ * @fileoverview Page de connexion de l'application
+ * @module components/Login
+ *
+ * @description
+ * Page de login avec authentification par email/mot de passe.
+ * Affiche les comptes de démonstration pour les deux agences.
+ *
+ * @author IMMO Copilot Team
+ * @version 1.0.0
+ */
+
 import React, { useState } from 'react';
 import { Lock, Mail, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
+/**
+ * Composant de page de connexion
+ *
+ * @component
+ * @param {Object} props - Propriétés du composant
+ * @param {Function} props.onLogin - Callback appelé lors de la soumission (email, password)
+ * @param {string} props.error - Message d'erreur à afficher (optionnel)
+ * @returns {JSX.Element} Page de login
+ */
 const Login = ({ onLogin, error: propError }) => {
+  // ============================================================
+  // STATE MANAGEMENT
+  // ============================================================
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
+  // ============================================================
+  // EVENT HANDLERS
+  // ============================================================
+
+  /**
+   * Gère la soumission du formulaire de connexion
+   * Simule un délai de 800ms pour l'expérience utilisateur
+   */
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Simulation d'un délai de connexion
+    // Simulation d'un délai de connexion pour UX
     setTimeout(() => {
       onLogin(email, password);
       setIsLoading(false);
     }, 800);
   };
 
+  // ============================================================
+  // RENDER
+  // ============================================================
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-dark-bg to-gray-900 flex items-center justify-center px-4">
-      {/* Decoration Background */}
+      {/* ==================== ARRIÈRE-PLAN DÉCORATIF ==================== */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 left-10 w-72 h-72 bg-accent/5 rounded-full blur-3xl"></div>
         <div className="absolute bottom-20 right-10 w-96 h-96 bg-accent/10 rounded-full blur-3xl"></div>

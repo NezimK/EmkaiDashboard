@@ -1,18 +1,58 @@
+/**
+ * @fileoverview Modal de programmation et gestion des visites
+ * @module components/ScheduleVisitModal
+ *
+ * @description
+ * Composant modal permettant de programmer, modifier ou annuler une visite avec un lead.
+ * Intègre la synchronisation automatique avec Google Calendar via OAuth2.
+ *
+ * Fonctionnalités principales :
+ * - Programmation de nouvelle visite
+ * - Modification de visite existante
+ * - Annulation de visite
+ * - Synchronisation automatique Google Calendar
+ * - Export manuel Outlook (fallback)
+ *
+ * @author IMMO Copilot Team
+ * @version 1.0.0
+ */
+
 import React, { useState } from 'react';
 import { X, Calendar, Clock, Trash2 } from 'lucide-react';
 import Toast from './Toast';
 import { scheduleVisit, cancelVisit } from '../services/airtable';
 import { exportToCalendar } from '../utils/calendarExport';
-import { createGoogleCalendarEvent, deleteGoogleCalendarEvent, checkGoogleCalendarStatus } from '../services/calendarApi';
+import { createGoogleCalendarEvent, checkGoogleCalendarStatus } from '../services/calendarApi';
 
+/**
+ * Modal de gestion des visites
+ *
+ * @component
+ * @param {Object} props - Propriétés du composant
+ * @param {Object} props.lead - Données du lead (nom, email, téléphone, date_visite)
+ * @param {Function} props.onClose - Callback de fermeture de la modal
+ * @param {Function} props.onLeadUpdate - Callback appelé après mise à jour du lead
+ * @param {string} props.agency - Identifiant de l'agence (AGENCY_A ou AGENCY_B)
+ * @returns {JSX.Element} Composant modal
+ */
 const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
+  // ============================================================
+  // STATE MANAGEMENT
+  // ============================================================
+
   const [visitDate, setVisitDate] = useState('');
   const [visitTime, setVisitTime] = useState('14:00');
   const [isScheduling, setIsScheduling] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
   const [toast, setToast] = useState(null);
 
-  // Si le lead a déjà une visite programmée, pré-remplir les champs
+  // ============================================================
+  // EFFECTS
+  // ============================================================
+
+  /**
+   * Pré-remplit les champs date/heure si une visite existe déjà
+   */
   React.useEffect(() => {
     if (lead.date_visite) {
       const date = new Date(lead.date_visite);
@@ -23,6 +63,23 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
     }
   }, [lead.date_visite]);
 
+  // ============================================================
+  // EVENT HANDLERS
+  // ============================================================
+
+  /**
+   * Gère la programmation ou modification d'une visite
+   *
+   * @async
+   * @param {Event} e - Événement de soumission du formulaire
+   *
+   * Workflow :
+   * 1. Validation des champs date/heure
+   * 2. Enregistrement dans Airtable via scheduleVisit()
+   * 3. Tentative de synchronisation avec Google Calendar si connecté
+   * 4. Fallback vers export manuel (Outlook) si Google Calendar non connecté
+   * 5. Affichage du toast de confirmation
+   */
   const handleSchedule = async (e) => {
     e.preventDefault();
 
@@ -41,19 +98,20 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
       const dateTimeString = `${visitDate}T${visitTime}:00`;
       const dateTime = new Date(dateTimeString);
 
+      // 1️⃣ Enregistrer la visite dans Airtable
       const updatedLead = await scheduleVisit(agency, lead.id, dateTime.toISOString());
 
-      // Notifier le parent
+      // 2️⃣ Notifier le composant parent de la mise à jour
       if (onLeadUpdate) {
         onLeadUpdate(updatedLead);
       }
 
-      // Synchroniser automatiquement avec Google Calendar si connecté
+      // 3️⃣ Synchronisation automatique avec le calendrier
       const userDataString = sessionStorage.getItem('emkai_user');
       if (userDataString) {
         const userData = JSON.parse(userDataString);
 
-        // Vérifier si Google Calendar est connecté
+        // Vérifier si Google Calendar est connecté via OAuth
         const isGoogleConnected = await checkGoogleCalendarStatus(userData.id);
 
         if (isGoogleConnected) {
@@ -63,29 +121,27 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
               title: `Visite - ${lead.nom}`,
               description: `Visite programmée avec ${lead.nom}\nEmail: ${lead.email || 'N/A'}\nTéléphone: ${lead.telephone || 'N/A'}`,
               startDateTime: dateTime.toISOString(),
-              endDateTime: new Date(dateTime.getTime() + 60 * 60 * 1000).toISOString() // +1 heure
+              endDateTime: new Date(dateTime.getTime() + 60 * 60 * 1000).toISOString() // Durée : 1 heure
             };
 
             const result = await createGoogleCalendarEvent(userData.id, eventDetails);
-            console.log('✅ Événement créé dans Google Calendar:', result.eventId);
 
-            // Stocker l'eventId dans le lead pour pouvoir le supprimer plus tard
+            // Stocker l'eventId pour permettre la suppression ultérieure
             updatedLead.googleCalendarEventId = result.eventId;
           } catch (exportError) {
             console.error('❌ Erreur lors de la création de l\'événement Google Calendar:', exportError);
-            // Afficher un avertissement mais ne pas bloquer
+            // Afficher un avertissement mais ne pas bloquer l'opération
             setToast({
               type: 'warning',
               message: 'Visite programmée mais erreur lors de l\'ajout au calendrier Google'
             });
           }
         } else {
-          // Pour Outlook ou autre (ancien comportement)
+          // Fallback : Export manuel pour Outlook ou autres calendriers
           const connectedCalendar = sessionStorage.getItem(`calendar_${agency}_${userData.email}`);
           if (connectedCalendar) {
             try {
               exportToCalendar(connectedCalendar, updatedLead, dateTime);
-              console.log('✅ Visite exportée vers', connectedCalendar);
             } catch (exportError) {
               console.error('❌ Erreur lors de l\'export vers le calendrier:', exportError);
             }
@@ -102,8 +158,6 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
       setTimeout(() => {
         onClose();
       }, 1000);
-
-      console.log('✅ Visite programmée:', dateTime.toISOString());
     } catch (error) {
       console.error('❌ Erreur lors de la programmation de la visite:', error);
       setToast({
@@ -115,6 +169,20 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
     }
   };
 
+  /**
+   * Gère l'annulation d'une visite existante
+   *
+   * @async
+   *
+   * Workflow :
+   * 1. Demande de confirmation utilisateur
+   * 2. Suppression de la visite dans Airtable via cancelVisit()
+   * 3. Notification du composant parent
+   * 4. Affichage du toast de confirmation
+   *
+   * Note : L'événement Google Calendar associé devrait être supprimé
+   * via l'API si googleCalendarEventId est disponible (fonctionnalité future)
+   */
   const handleCancelVisit = async () => {
     if (!window.confirm('Êtes-vous sûr de vouloir annuler cette visite ?')) {
       return;
@@ -125,7 +193,7 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
     try {
       const updatedLead = await cancelVisit(agency, lead.id);
 
-      // Notifier le parent
+      // Notifier le composant parent de la mise à jour
       if (onLeadUpdate) {
         onLeadUpdate(updatedLead);
       }
@@ -139,8 +207,6 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
       setTimeout(() => {
         onClose();
       }, 1000);
-
-      console.log('✅ Visite annulée');
     } catch (error) {
       console.error('❌ Erreur lors de l\'annulation de la visite:', error);
       setToast({
@@ -152,14 +218,26 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
     }
   };
 
+  /**
+   * Gère le clic sur le fond de la modal (backdrop)
+   * Ferme la modal uniquement si le clic est sur le backdrop, pas sur le contenu
+   */
   const handleBackdropClick = (e) => {
     if (e.target === e.currentTarget) {
       onClose();
     }
   };
 
-  // Date minimale : aujourd'hui
+  // ============================================================
+  // COMPUTED VALUES
+  // ============================================================
+
+  // Date minimale : aujourd'hui (empêche de programmer des visites dans le passé)
   const today = new Date().toISOString().split('T')[0];
+
+  // ============================================================
+  // RENDER
+  // ============================================================
 
   return (
     <div
@@ -167,7 +245,7 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
       onClick={handleBackdropClick}
     >
       <div className="relative w-full max-w-md bg-white dark:bg-dark-card rounded-2xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-800">
-        {/* Header */}
+        {/* ==================== HEADER ==================== */}
         <div className="bg-gradient-to-r from-accent via-accent to-accent-dark p-6">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-3">

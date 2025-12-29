@@ -50,10 +50,6 @@ function App() {
     const leadsEnCoursFiltered = leads.filter(lead => lead.statut === "EN_COURS");
     const leadsEnCours = leadsEnCoursFiltered.length;
 
-    // Debug: Afficher les leads dans chaque catégorie
-    console.log('🔍 KPI DEBUG - Leads Tièdes:', nonContactedLeads.filter(lead => lead.score === "TIEDE").map(l => ({ nom: l.nom, statut: l.statut, score: l.score })));
-    console.log('🔍 KPI DEBUG - Leads En Cours:', leadsEnCoursFiltered.map(l => ({ nom: l.nom, statut: l.statut, score: l.score })));
-
     return {
       totalQualifies,
       leadsChauds,
@@ -209,7 +205,6 @@ function App() {
       await updateLeadInAirtable(leadId, {
         Statut: isCurrentlyContacted ? "Qualifié" : "Contacté"
       });
-      console.log(`✅ Lead ${isCurrentlyContacted ? 'réactivé' : 'marqué comme contacté'} dans Airtable:`, leadId);
     } catch (error) {
       console.error('❌ Erreur lors de la mise à jour du lead dans Airtable:', error);
       // On garde quand même le changement local même si Airtable échoue
