@@ -1,0 +1,694 @@
+// Service pour récupérer les données depuis Supabase
+// Multi-Tenant Support via client_id
+
+import { createClient } from '@supabase/supabase-js';
+
+// Initialisation du client Supabase
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('❌ Supabase configuration missing. Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY');
+}
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Normalise le statut vers le format uniforme de l'app
+ */
+function normalizeStatus(status) {
+  if (!status) return 'EN_COURS';
+
+  const statusMapping = {
+    'Qualifié': 'QUALIFIE',
+    'QUALIFIE': 'QUALIFIE',
+    'qualifie': 'QUALIFIE',
+    'En-cours': 'EN_COURS',
+    'En_cours': 'EN_COURS',
+    'En_Cours': 'EN_COURS',
+    'EN_COURS': 'EN_COURS',
+    'en_cours': 'EN_COURS',
+    'En Découverte': 'EN_DECOUVERTE',
+    'En découverte': 'EN_DECOUVERTE',
+    'EN_DECOUVERTE': 'EN_DECOUVERTE',
+    'en_decouverte': 'EN_DECOUVERTE',
+    'Visite Programmée': 'VISITE_PROGRAMMEE',
+    'Visite programmée': 'VISITE_PROGRAMMEE',
+    'VISITE_PROGRAMMEE': 'VISITE_PROGRAMMEE',
+    'visite_programmee': 'VISITE_PROGRAMMEE',
+    'Archivé': 'ARCHIVE',
+    'ARCHIVE': 'ARCHIVE',
+    'archive': 'ARCHIVE',
+  };
+
+  return statusMapping[status] || status;
+}
+
+/**
+ * Formate un lead depuis Supabase vers le format de l'app
+ */
+function formatLeadFromDatabase(record, bienDetails = null) {
+  // Construire le nom complet
+  const nom = `${record.first_name || ''} ${record.last_name || ''}`.trim() || 'Sans nom';
+
+  // Parser la conversation JSON
+  let conversation = [];
+  if (record.conversation_json) {
+    try {
+      const parsed = typeof record.conversation_json === 'string'
+        ? JSON.parse(record.conversation_json)
+        : record.conversation_json;
+
+      // Filtrer les messages système
+      const filtered = parsed.filter((msg) => {
+        if (!msg.text) return false;
+        if (msg.text.includes('--- QUALIFICATION')) return false;
+        if (msg.text.includes('---')) return false;
+        return true;
+      });
+
+      conversation = filtered.map((msg) => {
+        // Mapper les roles n8n vers les senders de l'app
+        let sender;
+        if (msg.role === 'assistant') {
+          sender = 'bot';
+        } else if (msg.role === 'agent') {
+          sender = 'agent';
+        } else {
+          sender = 'lead';
+        }
+
+        return {
+          sender: sender,
+          message: msg.text,
+          timestamp: msg.time,
+          read: msg.read !== undefined ? msg.read : (sender !== 'lead'),
+        };
+      });
+    } catch (error) {
+      console.error('❌ Error parsing conversation JSON for lead:', nom, error);
+      conversation = [];
+    }
+  }
+
+  // Normaliser le statut
+  const statut = normalizeStatus(record.status);
+
+  return {
+    id: record.id,
+    nom: nom,
+    email: record.email || '',
+    telephone: record.phone || '',
+    score: record.score || 'TIEDE',
+    statut: statut,
+    summary: record.notes || '',
+    stop_ai: record.pause_ai || false,
+    phone: record.phone || '',
+    budget: record.financing || 'Non défini',
+    bien: bienDetails ? bienDetails.nom : (record.property_reference || 'Non défini'),
+    bienDetails: bienDetails,
+    secteur: record.source || 'Non défini',
+    adresse: bienDetails?.adresse || null,
+    delai: record.timeline || 'Non défini',
+    conversation: conversation,
+    agent_en_charge: record.assigned_agent || null,
+    date_visite: record.visit_date || null,
+    googleCalendarEventId: record.google_calendar_event_id || null,
+    createdTime: record.created_at || new Date().toISOString(),
+    // Champs additionnels Supabase
+    client_id: record.client_id,
+    thread_id: record.thread_id,
+    project: record.project,
+  };
+}
+
+/**
+ * Formate les détails d'un bien depuis Supabase
+ */
+function formatBienFromDatabase(record) {
+  if (!record) return null;
+
+  return {
+    id: record.id,
+    nom: record.ref_externe || record.titre || 'Bien sans référence',
+    adresse: record.adresse ? `${record.adresse}${record.ville ? ', ' + record.ville : ''}` : null,
+    type: record.type_bien || null,
+    prix: record.prix_vente || record.loyer || null,
+    surface: record.surface || null,
+    nbPieces: record.nb_pieces || null,
+  };
+}
+
+// ============================================================================
+// FETCH FUNCTIONS
+// ============================================================================
+
+/**
+ * Récupère les détails d'un bien depuis la table biens
+ * @param {string} propertyReference - La référence du bien
+ * @param {string} clientId - L'ID du client/tenant
+ * @returns {Promise<Object|null>} Les détails du bien ou null
+ */
+async function fetchBienDetails(propertyReference, clientId) {
+  if (!propertyReference) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('biens')
+      .select('*')
+      .eq('client_id', clientId)
+      .or(`ref_externe.eq.${propertyReference},netty_id.eq.${propertyReference}`)
+      .limit(1);
+
+    if (error) {
+      console.warn(`⚠️ Erreur lors de la récupération du bien ${propertyReference}:`, error.message);
+      return null;
+    }
+
+    // Prendre le premier résultat s'il existe
+    if (!data || data.length === 0) {
+      return null;
+    }
+
+    return formatBienFromDatabase(data[0]);
+  } catch (error) {
+    console.error('❌ Erreur lors de la récupération des détails du bien:', error);
+    return null;
+  }
+}
+
+/**
+ * Récupère tous les leads depuis Supabase pour un client spécifique
+ * @param {string} clientId - L'ID du client/tenant (UUID)
+ * @returns {Promise<Array>} Liste des leads formatés
+ */
+export async function fetchLeads(clientId) {
+  if (!clientId) {
+    throw new Error("L'identifiant du client est requis pour récupérer les leads");
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('leads')
+      .select('*')
+      .eq('client_id', clientId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw new Error(`Supabase error: ${error.message}`);
+    }
+
+    // Récupérer les détails des biens pour chaque lead
+    const leadsPromises = data.map(async (record) => {
+      let bienDetails = null;
+      if (record.property_reference) {
+        bienDetails = await fetchBienDetails(record.property_reference, clientId);
+      }
+      return formatLeadFromDatabase(record, bienDetails);
+    });
+
+    return await Promise.all(leadsPromises);
+  } catch (error) {
+    console.error(`❌ Error fetching leads from Supabase for client ${clientId}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Récupère un seul lead depuis Supabase par son ID
+ * @param {string} clientId - L'ID du client/tenant
+ * @param {string} leadId - L'ID du lead (UUID)
+ * @returns {Promise<Object>} Le lead parsé
+ */
+export async function fetchSingleLead(clientId, leadId) {
+  if (!clientId || !leadId) {
+    throw new Error("L'identifiant du client et du lead sont requis");
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('leads')
+      .select('*')
+      .eq('id', leadId)
+      .eq('client_id', clientId)
+      .single();
+
+    if (error) {
+      throw new Error(`Supabase error: ${error.message}`);
+    }
+
+    let bienDetails = null;
+    if (data.property_reference) {
+      bienDetails = await fetchBienDetails(data.property_reference, clientId);
+    }
+
+    return formatLeadFromDatabase(data, bienDetails);
+  } catch (error) {
+    console.error(`❌ Error fetching lead ${leadId} from Supabase:`, error);
+    throw error;
+  }
+}
+
+// ============================================================================
+// UPDATE FUNCTIONS
+// ============================================================================
+
+/**
+ * Met à jour un lead dans Supabase
+ * @param {string} clientId - L'ID du client/tenant
+ * @param {string} leadId - L'ID du lead à mettre à jour
+ * @param {object} updates - Les champs à mettre à jour (format Supabase)
+ * @returns {Promise<Object>} Le lead mis à jour
+ */
+export async function updateLead(clientId, leadId, updates) {
+  if (!clientId) {
+    throw new Error("L'identifiant du client est requis pour mettre à jour un lead");
+  }
+
+  try {
+    // Ajouter updated_at automatiquement
+    const updatesWithTimestamp = {
+      ...updates,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from('leads')
+      .update(updatesWithTimestamp)
+      .eq('id', leadId)
+      .eq('client_id', clientId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Supabase error details:', error);
+      throw new Error(`Supabase error: ${error.message}`);
+    }
+
+    let bienDetails = null;
+    if (data.property_reference) {
+      bienDetails = await fetchBienDetails(data.property_reference, clientId);
+    }
+
+    return formatLeadFromDatabase(data, bienDetails);
+  } catch (error) {
+    console.error('Error updating lead in Supabase:', error);
+    throw error;
+  }
+}
+
+/**
+ * Assigne un agent à un lead
+ * @param {string} clientId - L'ID du client/tenant
+ * @param {string} leadId - L'ID du lead
+ * @param {string} agentName - Le nom de l'agent
+ */
+export async function assignLeadToAgent(clientId, leadId, agentName) {
+  try {
+    console.log('🔄 Assigning lead:', leadId, 'to agent:', agentName, 'for client:', clientId);
+
+    const result = await updateLead(clientId, leadId, {
+      assigned_agent: agentName,
+      assigned_date: new Date().toISOString(),
+      status: 'EN_DECOUVERTE',
+    });
+
+    console.log('✅ Lead assigned successfully:', result);
+    return result;
+  } catch (error) {
+    console.error('❌ Error assigning lead to agent:', error);
+    throw error;
+  }
+}
+
+/**
+ * Désassigne un lead (retire l'agent et remet le statut à QUALIFIE)
+ * @param {string} clientId - L'ID du client/tenant
+ * @param {string} leadId - L'ID du lead
+ */
+export async function unassignLead(clientId, leadId) {
+  try {
+    console.log('🔄 Unassigning lead:', leadId, 'for client:', clientId);
+
+    const result = await updateLead(clientId, leadId, {
+      assigned_agent: null,
+      assigned_date: null,
+      status: 'QUALIFIE',
+    });
+
+    console.log('✅ Lead unassigned successfully:', result);
+    return result;
+  } catch (error) {
+    console.error('❌ Error unassigning lead:', error);
+    throw error;
+  }
+}
+
+/**
+ * Change le statut d'un lead
+ * @param {string} clientId - L'ID du client/tenant
+ * @param {string} leadId - L'ID du lead
+ * @param {string} newStatus - Le nouveau statut
+ */
+export async function updateLeadStatus(clientId, leadId, newStatus) {
+  try {
+    console.log('🔄 Updating lead status:', leadId, 'to', newStatus, 'for client:', clientId);
+
+    // Normaliser le statut avant de l'envoyer
+    const normalizedStatus = normalizeStatus(newStatus);
+
+    const result = await updateLead(clientId, leadId, {
+      status: normalizedStatus,
+    });
+
+    console.log('✅ Lead status updated successfully:', result);
+    return result;
+  } catch (error) {
+    console.error('❌ Error updating lead status:', error);
+    throw error;
+  }
+}
+
+/**
+ * Marque tous les messages d'un lead comme lus
+ * @param {string} clientId - L'ID du client/tenant
+ * @param {string} leadId - L'ID du lead
+ * @param {Array} conversation - La conversation à mettre à jour
+ */
+export async function markMessagesAsRead(clientId, leadId, conversation) {
+  try {
+    console.log('🔄 Marking messages as read for lead:', leadId, 'for client:', clientId);
+
+    // Marquer tous les messages comme lus
+    const updatedConversation = conversation.map(msg => ({
+      ...msg,
+      read: true,
+    }));
+
+    // Convertir en format n8n pour stockage
+    const n8nFormat = updatedConversation.map(msg => {
+      let role;
+      if (msg.sender === 'bot') {
+        role = 'assistant';
+      } else if (msg.sender === 'agent') {
+        role = 'agent';
+      } else {
+        role = 'user';
+      }
+
+      return {
+        role: role,
+        text: msg.message,
+        time: msg.timestamp,
+        read: msg.read,
+      };
+    });
+
+    const result = await updateLead(clientId, leadId, {
+      conversation_json: n8nFormat,
+    });
+
+    console.log('✅ Messages marked as read successfully');
+    return result;
+  } catch (error) {
+    console.error('❌ Error marking messages as read:', error);
+    throw error;
+  }
+}
+
+/**
+ * Toggle le champ pause_ai pour mettre en pause/reprendre l'IA
+ * @param {string} clientId - L'ID du client/tenant
+ * @param {string} leadId - L'ID du lead
+ * @param {boolean} stopValue - true pour mettre en pause l'IA, false pour la reprendre
+ */
+export async function toggleStopAI(clientId, leadId, stopValue) {
+  try {
+    console.log(`🔄 ${stopValue ? 'Pausing' : 'Resuming'} AI for lead:`, leadId, 'for client:', clientId);
+
+    const result = await updateLead(clientId, leadId, {
+      pause_ai: stopValue,
+    });
+
+    console.log(`✅ AI ${stopValue ? 'paused' : 'resumed'} successfully`);
+    return result;
+  } catch (error) {
+    console.error('❌ Error toggling pause_ai:', error);
+    throw error;
+  }
+}
+
+/**
+ * Programme une visite pour un lead
+ * @param {string} clientId - L'ID du client/tenant
+ * @param {string} leadId - L'ID du lead
+ * @param {string} visitDate - La date et heure de la visite (ISO string)
+ */
+export async function scheduleVisit(clientId, leadId, visitDate) {
+  try {
+    console.log(`🔄 Scheduling visit for lead:`, leadId, 'on', visitDate, 'for client:', clientId);
+
+    const result = await updateLead(clientId, leadId, {
+      visit_date: visitDate,
+      status: 'VISITE_PROGRAMMEE',
+    });
+
+    console.log(`✅ Visit scheduled successfully, new status:`, result.statut);
+    return result;
+  } catch (error) {
+    console.error('❌ Error scheduling visit:', error);
+    throw error;
+  }
+}
+
+/**
+ * Annuler une visite programmée
+ * @param {string} clientId - L'ID du client/tenant
+ * @param {string} leadId - L'ID du lead
+ */
+export async function cancelVisit(clientId, leadId) {
+  try {
+    console.log(`🔄 Canceling visit for lead:`, leadId, 'for client:', clientId);
+
+    const result = await updateLead(clientId, leadId, {
+      visit_date: null,
+      status: 'EN_DECOUVERTE',
+      google_calendar_event_id: null,
+    });
+
+    console.log(`✅ Visit canceled successfully`);
+    return result;
+  } catch (error) {
+    console.error('❌ Error canceling visit:', error);
+    throw error;
+  }
+}
+
+// ============================================================================
+// WHATSAPP / N8N INTEGRATION
+// ============================================================================
+
+/**
+ * Construit l'URL du webhook N8N pour un client donné
+ * En développement, utilise le proxy Vite pour éviter les problèmes CORS
+ * @param {string} clientId - L'ID du client/tenant
+ * @param {string} type - Le type de webhook ('whatsapp' ou 'email')
+ * @returns {string} L'URL complète du webhook
+ */
+function buildWebhookUrl(clientId, type = 'whatsapp') {
+  const isDev = import.meta.env.DEV;
+
+  if (isDev) {
+    // En développement: utiliser le proxy Vite pour éviter CORS
+    // /api/n8n est réécrit vers https://n8n.emkai.fr par vite.config.js
+    return `/api/n8n/webhook-test/${type}-${clientId}`;
+  }
+
+  // En production: URL directe
+  const baseUrl = import.meta.env.VITE_N8N_WEBHOOK_BASE_URL || 'https://n8n.emkai.fr/webhook-test';
+  return `${baseUrl}/${type}-${clientId}`;
+}
+
+/**
+ * Envoie un message WhatsApp de confirmation de rendez-vous via N8N
+ * @param {string} clientId - L'ID du client/tenant
+ * @param {Object} leadData - Les données du lead
+ * @param {string} visitDate - Date et heure de la visite (ISO string)
+ * @returns {Promise<Object>} Résultat de l'envoi
+ */
+export async function sendVisitConfirmationWhatsApp(clientId, leadData, visitDate) {
+  // Construire l'URL du webhook avec le client_id
+  const webhookUrl = buildWebhookUrl(clientId, 'whatsapp');
+
+  if (!clientId) {
+    console.warn('⚠️ client_id manquant pour le webhook WhatsApp');
+    return { success: false, error: 'client_id manquant' };
+  }
+
+  try {
+    // Formater la date en français
+    const dateObj = new Date(visitDate);
+    const formattedDate = dateObj.toLocaleDateString('fr-FR', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    const formattedTime = dateObj.toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    // Formater le prix
+    const prixFormate = leadData.bienDetails?.prix
+      ? `${parseInt(leadData.bienDetails.prix).toLocaleString('fr-FR')} €`
+      : 'Sur demande';
+
+    // Message WhatsApp de confirmation
+    const message = `✅ *Confirmation de votre visite*
+
+Bonjour ${leadData.nom},
+
+Nous avons le plaisir de confirmer votre rendez-vous au : ${leadData.adresse ? `📍 ${leadData.adresse}` : ''} .
+
+📆 Date : ${formattedDate}
+🕐 Heure : ${formattedTime}
+${leadData.adresse ? `📍 Lieu : ${leadData.adresse}` : ''}
+
+${leadData.adresse ? `🗺️ Voir l'itinéraire : https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(leadData.adresse)}` : ''}
+
+À très bientôt ! 🤝`;
+
+    // Payload pour N8N
+    const payload = {
+      phone: leadData.telephone,
+      message: message,
+      type: 'visit_confirmation',
+      leadId: leadData.id,
+      clientId: clientId,
+    };
+
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`N8N webhook error: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log('✅ Message WhatsApp de confirmation envoyé avec succès');
+    return { success: true, data: result };
+  } catch (error) {
+    console.error("❌ Erreur lors de l'envoi du message WhatsApp:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ============================================================================
+// REAL-TIME SUBSCRIPTIONS
+// ============================================================================
+
+/**
+ * Souscrit aux changements en temps réel sur la table leads
+ * @param {string} clientId - L'ID du client/tenant
+ * @param {Function} onInsert - Callback pour les nouveaux leads
+ * @param {Function} onUpdate - Callback pour les leads mis à jour
+ * @param {Function} onDelete - Callback pour les leads supprimés
+ * @returns {Object} Subscription object (call .unsubscribe() to stop)
+ */
+export function subscribeToLeads(clientId, { onInsert, onUpdate, onDelete }) {
+  console.log('🔄 Setting up real-time subscription for leads, client:', clientId);
+
+  const subscription = supabase
+    .channel(`leads-${clientId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'leads',
+        filter: `client_id=eq.${clientId}`,
+      },
+      async (payload) => {
+        console.log('📥 New lead received:', payload.new.id);
+        if (onInsert) {
+          let bienDetails = null;
+          if (payload.new.property_reference) {
+            bienDetails = await fetchBienDetails(payload.new.property_reference, clientId);
+          }
+          onInsert(formatLeadFromDatabase(payload.new, bienDetails));
+        }
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'leads',
+        filter: `client_id=eq.${clientId}`,
+      },
+      async (payload) => {
+        console.log('📝 Lead updated:', payload.new.id);
+        if (onUpdate) {
+          let bienDetails = null;
+          if (payload.new.property_reference) {
+            bienDetails = await fetchBienDetails(payload.new.property_reference, clientId);
+          }
+          onUpdate(formatLeadFromDatabase(payload.new, bienDetails));
+        }
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'leads',
+        filter: `client_id=eq.${clientId}`,
+      },
+      (payload) => {
+        console.log('🗑️ Lead deleted:', payload.old.id);
+        if (onDelete) {
+          onDelete(payload.old.id);
+        }
+      }
+    )
+    .subscribe((status) => {
+      console.log('📡 Subscription status:', status);
+    });
+
+  return subscription;
+}
+
+/**
+ * Se désabonner des changements en temps réel
+ * @param {Object} subscription - L'objet subscription retourné par subscribeToLeads
+ */
+export function unsubscribeFromLeads(subscription) {
+  if (subscription) {
+    console.log('🔌 Unsubscribing from leads channel');
+    supabase.removeChannel(subscription);
+  }
+}
+
+// ============================================================================
+// BACKWARD COMPATIBILITY ALIASES
+// Ces fonctions maintiennent la compatibilité avec l'ancien code
+// qui utilisait 'agency' au lieu de 'clientId'
+// ============================================================================
+
+// Alias pour fetchLeads (ancien nom: fetchLeadsFromAirtable)
+export const fetchLeadsFromAirtable = fetchLeads;
+
+// Alias pour updateLead (ancien nom: updateLeadInAirtable)
+export const updateLeadInAirtable = updateLead;

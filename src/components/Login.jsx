@@ -10,7 +10,7 @@
  * @version 1.0.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Lock, Mail, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 /**
@@ -31,10 +31,40 @@ const Login = ({ onLogin, error: propError }) => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+
+  // ============================================================
+  // EFFECTS
+  // ============================================================
+
+  /**
+   * Charge les identifiants sauvegardés au montage du composant
+   */
+  useEffect(() => {
+    const savedEmail = localStorage.getItem('rememberedEmail');
+    const savedRememberMe = localStorage.getItem('rememberMe') === 'true';
+
+    if (savedEmail && savedRememberMe) {
+      setEmail(savedEmail);
+      setRememberMe(true);
+    }
+  }, []);
 
   // ============================================================
   // EVENT HANDLERS
   // ============================================================
+
+  /**
+   * Gère la sauvegarde des identifiants si "Se souvenir de moi" est coché
+   */
+  const handleRememberMe = () => {
+    if (rememberMe) {
+      // Si on décoche, on supprime les données sauvegardées
+      localStorage.removeItem('rememberedEmail');
+      localStorage.removeItem('rememberMe');
+    }
+    setRememberMe(!rememberMe);
+  };
 
   /**
    * Gère la soumission du formulaire de connexion
@@ -44,9 +74,18 @@ const Login = ({ onLogin, error: propError }) => {
     e.preventDefault();
     setIsLoading(true);
 
+    // Sauvegarder l'email si "Se souvenir de moi" est coché
+    if (rememberMe) {
+      localStorage.setItem('rememberedEmail', email);
+      localStorage.setItem('rememberMe', 'true');
+    } else {
+      localStorage.removeItem('rememberedEmail');
+      localStorage.removeItem('rememberMe');
+    }
+
     // Simulation d'un délai de connexion pour UX
     setTimeout(() => {
-      onLogin(email, password);
+      onLogin(email, password, rememberMe);
       setIsLoading(false);
     }, 800);
   };
@@ -128,6 +167,21 @@ const Login = ({ onLogin, error: propError }) => {
                   )}
                 </button>
               </div>
+            </div>
+
+            {/* Remember Me Checkbox */}
+            <div className="flex items-center justify-between">
+              <label className="flex items-center cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={handleRememberMe}
+                  className="w-4 h-4 rounded border-gray-700 bg-gray-900 text-accent focus:ring-2 focus:ring-accent focus:ring-offset-0 transition-all cursor-pointer"
+                />
+                <span className="ml-2 text-sm text-gray-400 group-hover:text-gray-300 transition-colors">
+                  Se souvenir de moi
+                </span>
+              </label>
             </div>
 
             {/* Error Message */}

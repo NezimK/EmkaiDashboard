@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Mail, Phone, Euro, MapPin, Calendar, Target, Lock, UserCheck, UserMinus, Users, CheckCircle2 } from 'lucide-react';
-import { assignLeadToAgent, unassignLead, updateLeadStatus } from '../services/airtable';
+import { X, User, Mail, Phone, Euro, Globe, Calendar, Target, Lock, UserCheck, UserMinus, Users, CheckCircle2 } from 'lucide-react';
+import { assignLeadToAgent, unassignLead, updateLeadStatus } from '../services/supabase';
 import { mockUsers } from '../data/users';
 import ConfirmDialog from './ConfirmDialog';
 import AgentSelector from './AgentSelector';
@@ -367,9 +367,9 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
                 </div>
               </div>
               <div className="flex items-start space-x-3 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg border-l-4 border-accent">
-                <MapPin className="w-5 h-5 text-accent mt-0.5 flex-shrink-0" />
+                <Globe className="w-5 h-5 text-accent mt-0.5 flex-shrink-0" />
                 <div className="flex-1">
-                  <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Source</p>
+                  <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Portail</p>
                   <p className="text-sm font-medium text-gray-900 dark:text-white">{lead.secteur}</p>
                 </div>
               </div>

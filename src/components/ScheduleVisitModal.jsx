@@ -20,9 +20,9 @@
 import React, { useState } from 'react';
 import { X, Calendar, Clock, Trash2 } from 'lucide-react';
 import Toast from './Toast';
-import { scheduleVisit, cancelVisit } from '../services/airtable';
+import { scheduleVisit, cancelVisit, sendVisitConfirmationWhatsApp, updateLead } from '../services/supabase';
 import { exportToCalendar } from '../utils/calendarExport';
-import { createGoogleCalendarEvent, checkGoogleCalendarStatus } from '../services/calendarApi';
+import { createGoogleCalendarEvent, checkGoogleCalendarStatus, deleteGoogleCalendarEvent } from '../services/calendarApi';
 
 /**
  * Modal de gestion des visites
@@ -75,7 +75,7 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
    *
    * Workflow :
    * 1. Validation des champs date/heure
-   * 2. Enregistrement dans Airtable via scheduleVisit()
+   * 2. Enregistrement dans Supabase via scheduleVisit()
    * 3. Tentative de synchronisation avec Google Calendar si connecté
    * 4. Fallback vers export manuel (Outlook) si Google Calendar non connecté
    * 5. Affichage du toast de confirmation
@@ -98,7 +98,7 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
       const dateTimeString = `${visitDate}T${visitTime}:00`;
       const dateTime = new Date(dateTimeString);
 
-      // 1️⃣ Enregistrer la visite dans Airtable
+      // 1️⃣ Enregistrer la visite dans Supabase
       const updatedLead = await scheduleVisit(agency, lead.id, dateTime.toISOString());
 
       // 2️⃣ Notifier le composant parent de la mise à jour
@@ -106,7 +106,28 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
         onLeadUpdate(updatedLead);
       }
 
-      // 3️⃣ Synchronisation automatique avec le calendrier
+      // 3️⃣ Envoyer un message WhatsApp de confirmation au prospect
+      if (lead.phone || lead.telephone) {
+        try {
+          const whatsappResult = await sendVisitConfirmationWhatsApp(agency, {
+            id: lead.id, // Ajouter le record ID
+            nom: lead.nom,
+            telephone: lead.phone || lead.telephone,
+            adresse: lead.adresse,
+            bien: lead.bien,
+            bienDetails: lead.bienDetails
+          }, dateTime.toISOString());
+
+          if (!whatsappResult.success) {
+            console.error('⚠️ Message WhatsApp de confirmation non envoyé:', whatsappResult.error);
+          }
+        } catch (whatsappError) {
+          console.error('❌ Erreur lors de l\'envoi du message WhatsApp:', whatsappError);
+          // Ne pas bloquer l'opération si le WhatsApp échoue
+        }
+      }
+
+      // 4️⃣ Synchronisation automatique avec le calendrier
       const userDataString = sessionStorage.getItem('emkai_user');
       if (userDataString) {
         const userData = JSON.parse(userDataString);
@@ -116,7 +137,18 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
 
         if (isGoogleConnected) {
           try {
-            // Créer l'événement dans Google Calendar automatiquement
+            // Si une visite existait déjà, supprimer l'ancien événement Google Calendar
+            if (lead.googleCalendarEventId && lead.date_visite) {
+              try {
+                await deleteGoogleCalendarEvent(userData.id, lead.googleCalendarEventId);
+                console.log('✅ Ancien événement Google Calendar supprimé lors de la modification');
+              } catch (deleteError) {
+                console.warn('⚠️ Impossible de supprimer l\'ancien événement Google Calendar:', deleteError);
+                // Ne pas bloquer l'opération si la suppression échoue
+              }
+            }
+
+            // Créer le nouvel événement dans Google Calendar
             const eventDetails = {
               title: `Visite - ${lead.nom}`,
               description: `Visite programmée avec ${lead.nom}\nEmail: ${lead.email || 'N/A'}\nTéléphone: ${lead.telephone || 'N/A'}`,
@@ -126,7 +158,11 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
 
             const result = await createGoogleCalendarEvent(userData.id, eventDetails);
 
-            // Stocker l'eventId pour permettre la suppression ultérieure
+            // Sauvegarder l'eventId dans Supabase pour permettre la suppression ultérieure
+            await updateLead(agency, lead.id, {
+              google_calendar_event_id: result.eventId
+            });
+
             updatedLead.googleCalendarEventId = result.eventId;
           } catch (exportError) {
             console.error('❌ Erreur lors de la création de l\'événement Google Calendar:', exportError);
@@ -176,12 +212,10 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
    *
    * Workflow :
    * 1. Demande de confirmation utilisateur
-   * 2. Suppression de la visite dans Airtable via cancelVisit()
-   * 3. Notification du composant parent
-   * 4. Affichage du toast de confirmation
-   *
-   * Note : L'événement Google Calendar associé devrait être supprimé
-   * via l'API si googleCalendarEventId est disponible (fonctionnalité future)
+   * 2. Suppression de l'événement Google Calendar (si existant)
+   * 3. Suppression de la visite dans Supabase via cancelVisit()
+   * 4. Notification du composant parent
+   * 5. Affichage du toast de confirmation
    */
   const handleCancelVisit = async () => {
     if (!window.confirm('Êtes-vous sûr de vouloir annuler cette visite ?')) {
@@ -191,9 +225,25 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
     setIsCanceling(true);
 
     try {
+      // 1️⃣ Supprimer l'événement Google Calendar si un eventId existe
+      if (lead.googleCalendarEventId) {
+        const userDataString = sessionStorage.getItem('emkai_user');
+        if (userDataString) {
+          const userData = JSON.parse(userDataString);
+          try {
+            await deleteGoogleCalendarEvent(userData.id, lead.googleCalendarEventId);
+            console.log('✅ Événement Google Calendar supprimé avec succès');
+          } catch (calendarError) {
+            console.error('⚠️ Erreur lors de la suppression de l\'événement Google Calendar:', calendarError);
+            // Ne pas bloquer l'annulation si la suppression Google Calendar échoue
+          }
+        }
+      }
+
+      // 2️⃣ Annuler la visite dans Supabase
       const updatedLead = await cancelVisit(agency, lead.id);
 
-      // Notifier le composant parent de la mise à jour
+      // 3️⃣ Notifier le composant parent de la mise à jour
       if (onLeadUpdate) {
         onLeadUpdate(updatedLead);
       }

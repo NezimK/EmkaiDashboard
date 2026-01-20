@@ -508,6 +508,269 @@ export const USERS = {
 
 ---
 
+## 📧 Configuration N8N - Emails de Confirmation
+
+### Vue d'ensemble
+
+Lorsqu'un agent programme un rendez-vous avec un prospect, le système envoie **automatiquement** un email de confirmation via N8N.
+
+### Architecture
+
+```
+┌──────────────────┐
+│  ScheduleVisit   │
+│     Modal        │
+└────────┬─────────┘
+         │
+         ▼
+┌────────────────────┐
+│ sendVisitConfirm   │
+│   ationEmail()     │ (airtable.js)
+└────────┬───────────┘
+         │
+         ▼
+┌────────────────────┐
+│   N8N Webhook      │
+│  (Email Service)   │
+└────────┬───────────┘
+         │
+         ▼
+┌────────────────────┐
+│   Gmail / SMTP     │
+│  ✉️ → Prospect     │
+└────────────────────┘
+```
+
+### Configuration des Variables d'Environnement
+
+Ajouter dans votre fichier `.env` :
+
+```env
+# Webhooks N8N pour les emails de confirmation
+VITE_N8N_WEBHOOK_EMAIL_AGENCY_A=https://votre-n8n.com/webhook/immocope-send-email
+VITE_N8N_WEBHOOK_EMAIL_AGENCY_B=https://votre-n8n.com/webhook/realagency-send-email
+```
+
+### Payload envoyé par le Frontend
+
+Lorsqu'un RDV est programmé, le dashboard envoie ce payload au webhook N8N :
+
+```json
+{
+  "type": "visit_confirmation",
+  "lead": {
+    "nom": "Jean Dupont",
+    "email": "jean.dupont@example.com",
+    "telephone": "+33 6 12 34 56 78"
+  },
+  "bien": {
+    "nom": "Appartement T3 - Paris 15ème",
+    "adresse": "42 Rue de la Convention, 75015 Paris",
+    "type": "Appartement",
+    "prix": "450000"
+  },
+  "visit": {
+    "date": "lundi 30 décembre 2025",
+    "time": "14:30",
+    "dateISO": "2025-12-30T14:30:00.000Z"
+  },
+  "agency": "AGENCY_A"
+}
+```
+
+**Note importante** : L'adresse provient automatiquement de la **table Biens** sur Airtable (champ `Adresse` de la table Biens liée au lead via `Bien_Associe`).
+
+### Configuration N8N (Workflow)
+
+Créez un workflow N8N avec cette structure :
+
+#### 1. Webhook Trigger
+
+**Node Type** : Webhook
+- **HTTP Method** : POST
+- **Path** : `/webhook/immocope-send-email` (ou `realagency-send-email`)
+- **Response Mode** : Immediately
+
+#### 2. Function Node - Template Email
+
+**Node Type** : Function
+
+```javascript
+// Générer le contenu de l'email
+const lead = $input.item.json.lead;
+const visit = $input.item.json.visit;
+const agency = $input.item.json.agency;
+
+// Nom de l'agence
+const agencyName = agency === 'AGENCY_A' ? 'Immocope' : 'RealAgency';
+
+// Subject
+const subject = `✅ Confirmation de votre rendez-vous - ${agencyName}`;
+
+// Body HTML
+const htmlBody = `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #C5A065 0%, #B08F55 100%); color: black; padding: 30px; border-radius: 12px 12px 0 0; text-align: center; }
+    .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 12px 12px; }
+    .info-box { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #C5A065; }
+    .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🏠 ${agencyName}</h1>
+      <p style="margin:0; font-size:18px; font-weight:600;">Confirmation de votre rendez-vous</p>
+    </div>
+
+    <div class="content">
+      <p>Bonjour <strong>${lead.nom}</strong>,</p>
+
+      <p>Nous avons le plaisir de confirmer votre rendez-vous avec notre équipe.</p>
+
+      <div class="info-box">
+        <h3 style="margin-top:0; color:#C5A065;">📅 Détails du rendez-vous</h3>
+        <p><strong>Date :</strong> ${visit.date}</p>
+        <p><strong>Heure :</strong> ${visit.time}</p>
+        <p><strong>Secteur :</strong> ${lead.secteur}</p>
+      </div>
+
+      <p>Un de nos agents vous contactera au <strong>${lead.telephone}</strong> si nécessaire.</p>
+
+      <p style="margin-top:30px;">Nous sommes impatients de vous rencontrer !</p>
+
+      <div class="footer">
+        <p>Cet email a été envoyé automatiquement par ${agencyName}</p>
+        <p style="font-size:12px;">Pour toute question, répondez directement à cet email</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+`;
+
+// Plain text version
+const textBody = `
+Bonjour ${lead.nom},
+
+Nous avons le plaisir de confirmer votre rendez-vous avec notre équipe.
+
+📅 DÉTAILS DU RENDEZ-VOUS
+Date : ${visit.date}
+Heure : ${visit.time}
+Secteur : ${lead.secteur}
+
+Un de nos agents vous contactera au ${lead.telephone} si nécessaire.
+
+Nous sommes impatients de vous rencontrer !
+
+---
+${agencyName}
+`;
+
+return {
+  json: {
+    to: lead.email,
+    subject: subject,
+    htmlBody: htmlBody,
+    textBody: textBody,
+    leadName: lead.nom
+  }
+};
+```
+
+#### 3. Gmail / SMTP Node
+
+**Node Type** : Gmail (ou Send Email)
+
+**Configuration Gmail** :
+- **To** : `{{ $json.to }}`
+- **Subject** : `{{ $json.subject }}`
+- **Email Type** : HTML
+- **HTML** : `{{ $json.htmlBody }}`
+- **Text** : `{{ $json.textBody }}`
+
+**OU Configuration SMTP** :
+- **Host** : smtp.gmail.com
+- **Port** : 587
+- **Secure** : false
+- **Auth User** : votre-email@gmail.com
+- **Auth Password** : mot de passe d'application Gmail
+- **From** : votre-email@gmail.com
+- **To** : `{{ $json.to }}`
+- **Subject** : `{{ $json.subject }}`
+- **Body** : `{{ $json.htmlBody }}`
+
+#### 4. Response Node (optionnel)
+
+**Node Type** : Respond to Webhook
+
+```json
+{
+  "success": true,
+  "message": "Email envoyé à {{ $json.leadName }}",
+  "timestamp": "{{ $now }}"
+}
+```
+
+### Activation du Workflow N8N
+
+1. **Activez** le workflow dans N8N
+2. **Copiez** l'URL du webhook
+3. **Ajoutez** l'URL dans votre `.env` :
+   ```env
+   VITE_N8N_WEBHOOK_EMAIL_AGENCY_A=https://n8n.votre-domaine.com/webhook/...
+   ```
+4. **Redémarrez** le frontend
+
+### Test du Système
+
+Pour tester l'envoi d'email :
+
+1. Connectez-vous au dashboard
+2. Sélectionnez un lead avec un **email valide**
+3. Cliquez sur **"Programmer une visite"**
+4. Sélectionnez une date et heure
+5. Validez
+6. ✅ L'email est envoyé automatiquement
+
+### Logs de Debug
+
+Le système affiche des logs dans la console :
+
+```javascript
+✅ Email de confirmation envoyé avec succès
+// OU
+⚠️ Email de confirmation non envoyé: Webhook URL not configured
+// OU
+❌ Erreur lors de l'envoi de l'email de confirmation: ...
+```
+
+### Comportement du Système
+
+- ✅ **Email envoyé** : Si le lead a un email ET le webhook est configuré
+- ⚠️ **Email ignoré** : Si le lead n'a pas d'email
+- ⚠️ **Webhook manquant** : Le RDV est quand même programmé (l'email est optionnel)
+- ❌ **Erreur webhook** : Le RDV est programmé, mais l'email n'est pas envoyé
+
+**Important** : L'échec de l'envoi d'email **ne bloque jamais** la programmation du rendez-vous.
+
+### Personnalisation du Template
+
+Vous pouvez personnaliser le template email directement dans N8N :
+
+- **Couleurs** : Modifier `#C5A065` (or premium)
+- **Logo** : Ajouter `<img src="https://...">` dans le header
+- **Texte** : Personnaliser le message selon votre agence
+- **Footer** : Ajouter signature, numéro de téléphone, etc.
+
+---
+
 ## 👤 Comptes de Démonstration
 
 ### Agence A : Immocope

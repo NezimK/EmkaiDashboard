@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, MessageSquare, Send, PauseCircle, PlayCircle } from 'lucide-react';
 import Toast from './Toast';
-import { updateLeadStatus, assignLeadToAgent, markMessagesAsRead, toggleStopAI } from '../services/airtable';
+import { updateLeadStatus, assignLeadToAgent, markMessagesAsRead, toggleStopAI, fetchSingleLead } from '../services/supabase';
 import { sendWhatsAppMessage, isWhatsAppConfigured } from '../services/whatsapp';
 
 const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
@@ -25,6 +25,37 @@ const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate, agency })
     console.log('🔄 [ConversationModal] Syncing conversation for', lead.nom);
     setLocalConversation(lead.conversation || []);
   }, [lead.conversation, lead.nom]);
+
+  // Polling pour récupérer les nouveaux messages toutes les 5 secondes
+  useEffect(() => {
+    const pollMessages = async () => {
+      try {
+        const updatedLead = await fetchSingleLead(agency, lead.id);
+
+        // Vérifier s'il y a de nouveaux messages
+        const currentCount = localConversation.length;
+        const newCount = updatedLead.conversation?.length || 0;
+
+        if (newCount > currentCount) {
+          console.log('📨 [ConversationModal] New messages detected:', newCount - currentCount);
+          setLocalConversation(updatedLead.conversation || []);
+
+          // Notifier le parent pour mettre à jour la liste
+          if (onLeadUpdate) {
+            onLeadUpdate(updatedLead);
+          }
+        }
+      } catch (error) {
+        console.error('❌ [ConversationModal] Error polling messages:', error);
+      }
+    };
+
+    // Démarrer le polling toutes les 5 secondes
+    const intervalId = setInterval(pollMessages, 5000);
+
+    // Nettoyer l'intervalle quand le composant est démonté
+    return () => clearInterval(intervalId);
+  }, [agency, lead.id, localConversation.length, onLeadUpdate]);
 
   // Scroller vers le bas quand localConversation change (nouveau message)
   useEffect(() => {
@@ -106,17 +137,7 @@ const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate, agency })
       // Si le lead n'est pas assigné à l'utilisateur actuel, l'assigner
       if (!isAssignedToMe && currentUser) {
         console.log('📝 Assignation automatique du lead à', currentUser.name);
-        const updatedLead = await assignLeadToAgent(lead.id, currentUser.name);
-
-        // Notifier le parent pour mettre à jour la liste
-        if (onLeadUpdate) {
-          onLeadUpdate(updatedLead);
-        }
-      }
-      // Sinon, si le lead n'est pas déjà en statut "Contacté", le mettre à jour
-      else if (lead.statut !== 'CONTACTE') {
-        console.log('📝 Mise à jour du statut à "Contacté"');
-        const updatedLead = await updateLeadStatus(lead.id, 'Contacté');
+        const updatedLead = await assignLeadToAgent(agency, lead.id, currentUser.name);
 
         // Notifier le parent pour mettre à jour la liste
         if (onLeadUpdate) {
@@ -152,6 +173,10 @@ const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate, agency })
   const handleKeyPress = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      // Empêcher l'envoi si le dossier n'est pas assigné à l'utilisateur actuel
+      if (!isAssignedToMe && !isManager) {
+        return;
+      }
       handleSendMessage();
     }
   };
@@ -345,43 +370,46 @@ const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate, agency })
         </div>
 
         {/* Zone d'envoi de message */}
-        {(isAssignedToMe || isManager) && (
-          <div className="p-6 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-800 flex-shrink-0">
-            <div className="flex items-end space-x-2 bg-white dark:bg-gray-800 rounded-lg p-3 border-2 border-gray-300 dark:border-gray-700 focus-within:border-accent transition-colors">
-              <textarea
-                value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Tapez votre message..."
-                disabled={isSending}
-                className="flex-1 bg-transparent text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 text-sm resize-none focus:outline-none disabled:opacity-50"
-                rows={2}
-              />
-              <button
-                onClick={handleSendMessage}
-                disabled={!messageText.trim() || isSending}
-                className="p-2.5 bg-accent hover:bg-accent-dark text-black rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-                title="Envoyer le message"
-              >
-                <Send className="w-5 h-5" />
-              </button>
-            </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-              Appuyez sur Entrée pour envoyer, Shift + Entrée pour une nouvelle ligne
-            </p>
-          </div>
-        )}
-
-        {(isFree || (isAssignedToOther && !isManager)) && (
-          <div className="p-6 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-800 flex-shrink-0">
-            <div className="text-center text-gray-500 dark:text-gray-400">
-              <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">
-                Vous devez prendre en charge ce dossier pour envoyer des messages
+        <div className={`p-6 border-t border-gray-200 dark:border-gray-800 flex-shrink-0 transition-all ${
+          (!isAssignedToMe && !isManager)
+            ? 'bg-gray-200 dark:bg-gray-800 opacity-50 cursor-not-allowed'
+            : 'bg-gray-50 dark:bg-gray-900/50'
+        }`}>
+          {(!isAssignedToMe && !isManager) ? (
+            /* Message d'avertissement pour dossier non pris */
+            <div className="flex items-center justify-center space-x-2 rounded-lg p-4 bg-gray-300 dark:bg-gray-700 border-2 border-gray-400 dark:border-gray-600">
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                🔒 Vous devez prendre en charge ce dossier pour envoyer des messages
               </p>
             </div>
-          </div>
-        )}
+          ) : (
+            /* Zone d'envoi active */
+            <>
+              <div className="flex items-end space-x-2 rounded-lg p-3 border-2 transition-colors bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 focus-within:border-accent">
+                <textarea
+                  value={messageText}
+                  onChange={(e) => setMessageText(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="Tapez votre message..."
+                  disabled={isSending}
+                  className="flex-1 bg-transparent text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 text-sm resize-none focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                  rows={2}
+                />
+                <button
+                  onClick={handleSendMessage}
+                  disabled={!messageText.trim() || isSending}
+                  className="p-2.5 bg-accent hover:bg-accent-dark text-black rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                  title="Envoyer le message"
+                >
+                  <Send className="w-5 h-5" />
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                Appuyez sur Entrée pour envoyer, Shift + Entrée pour une nouvelle ligne
+              </p>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Toast de notification */}

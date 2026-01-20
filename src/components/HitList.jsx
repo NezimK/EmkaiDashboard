@@ -2,7 +2,7 @@ import React from 'react';
 import { Target } from 'lucide-react';
 import LeadCard from './LeadCard';
 
-const HitList = ({ leads, selectedFilter, onMarkContacted, currentUser, onLeadUpdate, onOpenInfoModal, onOpenConversationModal, agency }) => {
+const HitList = ({ leads, selectedFilter, currentUser, onLeadUpdate, onOpenInfoModal, onOpenConversationModal, agency }) => {
   // Filtrer les leads selon le filtre sélectionné
   let filteredLeads = leads;
 
@@ -10,11 +10,13 @@ const HitList = ({ leads, selectedFilter, onMarkContacted, currentUser, onLeadUp
     // Filtre spécial pour les leads "En cours"
     filteredLeads = leads.filter(lead => lead.statut === "EN_COURS");
   } else {
-    // Filtrer les leads NON CONTACTÉS, NON EN_COURS, et NON EN_DECOUVERTE
+    // Filtrer uniquement les leads QUALIFIES (à traiter)
+    // Exclure : EN_COURS, EN_DECOUVERTE, VISITE_PROGRAMMEE, ARCHIVE
     filteredLeads = leads.filter(lead =>
-      lead.statut !== "CONTACTE" &&
       lead.statut !== "EN_COURS" &&
-      lead.statut !== "EN_DECOUVERTE"
+      lead.statut !== "EN_DECOUVERTE" &&
+      lead.statut !== "VISITE_PROGRAMMEE" &&
+      lead.statut !== "ARCHIVE"
     );
 
     // IMPORTANT: Exclure les leads assignés à d'autres agents
@@ -43,7 +45,7 @@ const HitList = ({ leads, selectedFilter, onMarkContacted, currentUser, onLeadUp
     if (selectedFilter === "TIEDE") return "Projets à Suivre";
     if (selectedFilter === "FROID") return "Prospects Froids";
     if (selectedFilter === "EN_COURS") return "En cours...";
-    return "Opportunités Détectées";
+    return "À Traiter d'Urgence";
   };
 
   return (
@@ -67,7 +69,6 @@ const HitList = ({ leads, selectedFilter, onMarkContacted, currentUser, onLeadUp
           <LeadCard
             key={lead.id}
             lead={lead}
-            onMarkContacted={onMarkContacted}
             currentUser={currentUser}
             onLeadUpdate={onLeadUpdate}
             onOpenInfoModal={onOpenInfoModal}

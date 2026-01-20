@@ -1,15 +1,17 @@
-// Profils utilisateurs (Mock Data) - Multi-Agency Support
-// Chaque utilisateur est rattaché à une agence spécifique
+// Profils utilisateurs (Mock Data) - Multi-Tenant Support
+// Chaque utilisateur est rattaché à un client (tenant) via client_id
 export const mockUsers = [
-  // IMMOCOPE - Users
+  // IMMOCOPE - Users (client_id from Supabase tenants table)
   {
     id: "user-001",
     email: "demo@immocope.com",
     password: "demo123",
     name: "Agent Immocope",
     role: "agent",
-    agency: "AGENCY_A",
-    agencyName: "Immocope"
+    client_id: "eb024fe2-b938-4951-a43a-25edf5ac7d86",
+    agencyName: "Immocope",
+    // Backward compatibility
+    agency: "eb024fe2-b938-4951-a43a-25edf5ac7d86"
   },
   {
     id: "user-002",
@@ -17,8 +19,9 @@ export const mockUsers = [
     password: "agent123",
     name: "Sophie Martin",
     role: "agent",
-    agency: "AGENCY_A",
-    agencyName: "Immocope"
+    client_id: "eb024fe2-b938-4951-a43a-25edf5ac7d86",
+    agencyName: "Immocope",
+    agency: "eb024fe2-b938-4951-a43a-25edf5ac7d86"
   },
   {
     id: "user-003",
@@ -26,37 +29,9 @@ export const mockUsers = [
     password: "manager123",
     name: "Manager Immocope",
     role: "manager",
-    agency: "AGENCY_A",
-    agencyName: "Immocope"
-  },
-
-  // REALAGENCY - Users
-  {
-    id: "user-004",
-    email: "demo@realagency.com",
-    password: "demo123",
-    name: "Agent RealAgency",
-    role: "agent",
-    agency: "AGENCY_B",
-    agencyName: "RealAgency"
-  },
-  {
-    id: "user-005",
-    email: "agent@realagency.com",
-    password: "agent123",
-    name: "Pierre Rousseau",
-    role: "agent",
-    agency: "AGENCY_B",
-    agencyName: "RealAgency"
-  },
-  {
-    id: "user-006",
-    email: "manager@realagency.com",
-    password: "manager123",
-    name: "Manager RealAgency",
-    role: "manager",
-    agency: "AGENCY_B",
-    agencyName: "RealAgency"
+    client_id: "eb024fe2-b938-4951-a43a-25edf5ac7d86",
+    agencyName: "Immocope",
+    agency: "eb024fe2-b938-4951-a43a-25edf5ac7d86"
   }
 ];
 

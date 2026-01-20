@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { AlertCircle, Info, UserCheck, Clock, MessageSquare } from 'lucide-react';
-import { assignLeadToAgent } from '../services/airtable';
+import { assignLeadToAgent } from '../services/supabase';
 import { formatTimeAgo } from '../utils/timeAgo';
 
-const LeadCard = ({ lead, onMarkContacted, currentUser, onLeadUpdate, onOpenInfoModal, onOpenConversationModal, showLastMessage = false, agency }) => {
+const LeadCard = ({ lead, currentUser, onLeadUpdate, onOpenInfoModal, onOpenConversationModal, showLastMessage = false, agency }) => {
   const [isAssigning, setIsAssigning] = useState(false);
 
   const handleAssignToMe = async () => {
@@ -41,8 +41,8 @@ const LeadCard = ({ lead, onMarkContacted, currentUser, onLeadUpdate, onOpenInfo
     <>
       <div className={`bg-white dark:bg-dark-card rounded-xl p-5 border transition-all duration-300 group ${
         hasUnreadMessage
-          ? 'border-accent shadow-lg ring-2 ring-accent/20'
-          : 'border-gray-200 dark:border-gray-800 hover:shadow-lg hover:border-accent/50 dark:hover:border-accent/50'
+          ? 'border-accent shadow-lg ring-2 ring-accent/20 dark:ring-accent/30'
+          : 'border-gray-200 dark:border-gray-700 hover:shadow-lg dark:hover:shadow-accent/10 hover:border-accent/50 dark:hover:border-accent/50'
       }`}>
         {/* Header */}
         <div className="flex items-start justify-between mb-3">
@@ -69,21 +69,21 @@ const LeadCard = ({ lead, onMarkContacted, currentUser, onLeadUpdate, onOpenInfo
               </span>
             )}
           </div>
-          {/* Timestamp en haut à droite */}
-          {lead.createdTime && (
-            <span className="inline-flex items-center text-xs text-gray-500 dark:text-gray-500">
+          {/* Timestamp en haut à droite - dernier message ou date de création */}
+          {(lastMessage?.timestamp || lead.createdTime) && (
+            <span className="inline-flex items-center text-xs text-gray-500 dark:text-gray-400">
               <Clock className="w-3 h-3 mr-1" />
-              {formatTimeAgo(lead.createdTime)}
+              {formatTimeAgo(lastMessage?.timestamp || lead.createdTime)}
             </span>
           )}
         </div>
 
         {/* Dernier message ou résumé IA */}
         {showLastMessage && lastMessage ? (
-          <div className={`mb-4 p-3 rounded-lg ${
+          <div className={`mb-4 p-3 rounded-lg border ${
             hasUnreadMessage
-              ? 'bg-accent/10 border border-accent/30'
-              : 'bg-gray-50 dark:bg-gray-800/50'
+              ? 'bg-accent/10 dark:bg-accent/5 border-accent/30 dark:border-accent/20'
+              : 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700'
           }`}>
             <div className="flex items-start gap-2 mb-1">
               <MessageSquare className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
@@ -117,10 +117,10 @@ const LeadCard = ({ lead, onMarkContacted, currentUser, onLeadUpdate, onOpenInfo
           <button
             onClick={handleAssignToMe}
             disabled={isAssigning || isAssignedToMe}
-            className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors ${
+            className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-all duration-200 ${
               isAssignedToMe
-                ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400 cursor-default'
-                : 'hover:bg-blue-100 dark:hover:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300'
+                ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 cursor-default'
+                : 'hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 border border-transparent hover:border-blue-200 dark:hover:border-blue-800'
             } ${isAssigning ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             <UserCheck className="w-4 h-4" />
@@ -134,7 +134,7 @@ const LeadCard = ({ lead, onMarkContacted, currentUser, onLeadUpdate, onOpenInfo
             {/* Bouton Info */}
             <button
               onClick={() => onOpenInfoModal && onOpenInfoModal(lead)}
-              className="p-2.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg transition-all duration-200"
+              className="p-2.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg transition-all duration-200 hover:shadow-md border border-gray-200 dark:border-gray-700"
               title="Voir les informations détaillées"
             >
               <Info className="w-5 h-5" />
@@ -143,7 +143,7 @@ const LeadCard = ({ lead, onMarkContacted, currentUser, onLeadUpdate, onOpenInfo
             {/* Bouton Message - Ouvrir la conversation */}
             <button
               onClick={() => onOpenConversationModal && onOpenConversationModal(lead)}
-              className="p-2.5 bg-accent hover:bg-accent-dark text-black rounded-lg transition-all duration-200"
+              className="p-2.5 bg-accent hover:bg-accent-dark text-black rounded-lg transition-all duration-200 hover:shadow-md shadow-accent/20"
               title="Ouvrir la conversation"
             >
               <MessageSquare className="w-5 h-5" />

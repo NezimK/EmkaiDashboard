@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Users, Calendar, RotateCcw, Archive, Shield, Settings } from 'lucide-react';
+import { Home, Users, Calendar, RotateCcw, Archive, Shield, Settings, BarChart3 } from 'lucide-react';
 
 const Sidebar = ({ currentView, onNavigate, currentUser }) => {
   const navigationItems = [
@@ -25,6 +25,12 @@ const Sidebar = ({ currentView, onNavigate, currentUser }) => {
       id: 'relance',
       label: 'Relance',
       icon: RotateCcw,
+      color: 'text-accent'
+    },
+    {
+      id: 'kpi',
+      label: 'Statistiques',
+      icon: BarChart3,
       color: 'text-accent'
     },
     {

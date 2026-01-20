@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import Cockpit from './components/Cockpit';
 import HitList from './components/HitList';
-import ContactedLeads from './components/ContactedLeads';
 import LeadCard from './components/LeadCard';
 import LeadModal from './components/LeadModal';
 import ConversationModal from './components/ConversationModal';
@@ -12,7 +11,9 @@ import VisitsCalendar from './components/VisitsCalendar';
 import Settings from './components/Settings';
 import Login from './components/Login';
 import FilterBar from './components/FilterBar';
-import { fetchLeadsFromAirtable } from './services/airtable';
+import KpiStats from './components/KpiStats';
+import RelanceView from './components/RelanceView';
+import { fetchLeads, subscribeToLeads, unsubscribeFromLeads } from './services/supabase';
 import { validateLogin } from './data/users';
 
 function App() {
@@ -31,27 +32,25 @@ function App() {
 
   // Calculer les KPIs depuis les leads en temps réel
   const getKPIs = () => {
-    // Total des opportunités détectées = TOUS les leads dans Airtable
-    const totalQualifies = leads.length;
-
-    // Les leads Chauds/Tièdes/Froids = seulement les NON contactés, NON en cours, NON en découverte
+    // Les leads Chauds/Tièdes/Froids = seulement les NON en cours, NON en découverte, NON visite programmée
     // ET qui ne sont pas assignés à d'autres agents
     const nonContactedLeads = leads.filter(lead =>
-      lead.statut !== "CONTACTE" &&
       lead.statut !== "EN_COURS" &&
       lead.statut !== "EN_DECOUVERTE" &&
+      lead.statut !== "VISITE_PROGRAMMEE" && // Exclure les visites programmées
+      !lead.date_visite && // Exclure aussi par la date de visite
+      lead.statut !== "ARCHIVE" && // Exclure les archivés
       (!lead.agent_en_charge || lead.agent_en_charge === currentUser?.name)
     );
     const leadsChauds = nonContactedLeads.filter(lead => lead.score === "CHAUD").length;
     const leadsTiedes = nonContactedLeads.filter(lead => lead.score === "TIEDE").length;
     const leadsFroids = nonContactedLeads.filter(lead => lead.score === "FROID").length;
 
-    // Leads En cours = statut "EN_COURS" (déjà mappé depuis "En-cours" ou "En_cours" par airtable.js)
+    // Leads En cours = statut "EN_COURS" (déjà mappé depuis "En-cours" ou "En_cours" par supabase.js)
     const leadsEnCoursFiltered = leads.filter(lead => lead.statut === "EN_COURS");
     const leadsEnCours = leadsEnCoursFiltered.length;
 
     return {
-      totalQualifies,
       leadsChauds,
       leadsTiedes,
       leadsFroids,
@@ -61,50 +60,90 @@ function App() {
 
   const kpis = getKPIs();
 
-  // Charger les leads depuis Airtable
+  // Charger les leads depuis Supabase avec real-time subscriptions
   useEffect(() => {
-    // Ne charger les leads que si l'utilisateur est authentifié et a une agence
-    if (!isAuthenticated || !currentUser?.agency) {
-      setLoading(false); // Important: arrêter le loading si pas authentifié
+    // Ne charger les leads que si l'utilisateur est authentifié et a un client_id
+    const clientId = currentUser?.client_id || currentUser?.agency;
+    if (!isAuthenticated || !clientId) {
+      setLoading(false);
       return;
     }
 
-    let isFirstLoad = true;
+    let subscription = null;
 
     async function loadLeads() {
       try {
-        // Afficher le loader uniquement au premier chargement
-        if (isFirstLoad) {
-          setLoading(true);
-        }
+        setLoading(true);
         setError(null);
-        const data = await fetchLeadsFromAirtable(currentUser.agency);
+        const data = await fetchLeads(clientId);
         setLeads(data);
       } catch (err) {
         console.error('Erreur lors du chargement des leads:', err);
-        // Afficher l'erreur uniquement au premier chargement
-        if (isFirstLoad) {
-          setError(err.message);
-        }
+        setError(err.message);
       } finally {
-        if (isFirstLoad) {
-          setLoading(false);
-          isFirstLoad = false;
-        }
+        setLoading(false);
       }
     }
 
+    // Charger les leads initiaux
     loadLeads();
 
-    // Rafraîchir toutes les 30 secondes pour avoir les données à jour (en arrière-plan)
-    const interval = setInterval(loadLeads, 30000);
-    return () => clearInterval(interval);
-  }, [isAuthenticated, currentUser?.agency]);
+    // Configurer les subscriptions real-time (plus besoin de polling !)
+    subscription = subscribeToLeads(clientId, {
+      onInsert: (newLead) => {
+        console.log('📥 Nouveau lead reçu en temps réel:', newLead.nom);
+        setLeads(prevLeads => [newLead, ...prevLeads]);
+      },
+      onUpdate: (updatedLead) => {
+        console.log('📝 Lead mis à jour en temps réel:', updatedLead.nom);
+        setLeads(prevLeads =>
+          prevLeads.map(lead =>
+            lead.id === updatedLead.id ? updatedLead : lead
+          )
+        );
+        // Mettre à jour les modales ouvertes si nécessaire
+        if (selectedLeadForInfo?.id === updatedLead.id) {
+          setSelectedLeadForInfo(updatedLead);
+        }
+        if (selectedLeadForConversation?.id === updatedLead.id) {
+          setSelectedLeadForConversation(updatedLead);
+        }
+      },
+      onDelete: (deletedLeadId) => {
+        console.log('🗑️ Lead supprimé en temps réel:', deletedLeadId);
+        setLeads(prevLeads => prevLeads.filter(lead => lead.id !== deletedLeadId));
+        // Fermer les modales si le lead supprimé était sélectionné
+        if (selectedLeadForInfo?.id === deletedLeadId) {
+          setSelectedLeadForInfo(null);
+        }
+        if (selectedLeadForConversation?.id === deletedLeadId) {
+          setSelectedLeadForConversation(null);
+        }
+      },
+    });
 
-  // Vérifier si un utilisateur est déjà connecté (sessionStorage)
+    // Cleanup: se désabonner quand le composant est démonté ou l'utilisateur change
+    return () => {
+      if (subscription) {
+        unsubscribeFromLeads(subscription);
+      }
+    };
+  }, [isAuthenticated, currentUser?.client_id, currentUser?.agency]);
+
+  // Vérifier si un utilisateur est déjà connecté (sessionStorage ou localStorage)
   // sessionStorage : garde la session pendant les rafraîchissements, mais déconnecte à la fermeture du navigateur
+  // localStorage : garde la session même après fermeture du navigateur (si "Se souvenir de moi")
   useEffect(() => {
-    const savedUser = sessionStorage.getItem('emkai_user');
+    // D'abord vérifier sessionStorage (prioritaire)
+    let savedUser = sessionStorage.getItem('emkai_user');
+    let storageType = 'session';
+
+    // Si pas de session, vérifier localStorage (connexion persistante)
+    if (!savedUser) {
+      savedUser = localStorage.getItem('emkai_user');
+      storageType = 'local';
+    }
+
     if (savedUser) {
       try {
         const user = JSON.parse(savedUser);
@@ -113,16 +152,24 @@ function App() {
         if (user && user.agency && user.agencyName && user.email && user.name && user.role) {
           setCurrentUser(user);
           setIsAuthenticated(true);
+          console.log(`✅ Session restaurée depuis ${storageType}Storage`);
+
+          // Si restauré depuis localStorage, copier aussi dans sessionStorage pour cette session
+          if (storageType === 'local') {
+            sessionStorage.setItem('emkai_user', savedUser);
+          }
         } else {
           // Si les données sont incomplètes, forcer la déconnexion
           console.warn('Session invalide : données utilisateur incomplètes');
           sessionStorage.removeItem('emkai_user');
+          localStorage.removeItem('emkai_user');
           setIsAuthenticated(false);
           setCurrentUser(null);
         }
       } catch (error) {
         console.error('Erreur lors de la lecture de la session:', error);
         sessionStorage.removeItem('emkai_user');
+        localStorage.removeItem('emkai_user');
         setIsAuthenticated(false);
         setCurrentUser(null);
       }
@@ -155,15 +202,28 @@ function App() {
     setViewFilter(null);
   }, [currentView]);
 
-  const handleLogin = (email, password) => {
+  const handleLogin = (email, password, rememberMe = false) => {
     const result = validateLogin(email, password);
 
     if (result.success) {
       setCurrentUser(result.user);
       setIsAuthenticated(true);
       setLoginError('');
-      // Sauvegarder dans sessionStorage (se vide à la fermeture du navigateur)
-      sessionStorage.setItem('emkai_user', JSON.stringify(result.user));
+
+      const userJSON = JSON.stringify(result.user);
+
+      // Toujours sauvegarder dans sessionStorage (pour la session actuelle)
+      sessionStorage.setItem('emkai_user', userJSON);
+
+      // Si "Se souvenir de moi" est coché, sauvegarder aussi dans localStorage
+      if (rememberMe) {
+        localStorage.setItem('emkai_user', userJSON);
+        console.log('✅ Session sauvegardée (connexion persistante)');
+      } else {
+        // Nettoyer localStorage si l'option n'est pas cochée
+        localStorage.removeItem('emkai_user');
+        console.log('✅ Session sauvegardée (session uniquement)');
+      }
     } else {
       setLoginError(result.error);
     }
@@ -178,37 +238,16 @@ function App() {
     setLeads([]); // Vider les leads pour sécurité
     setSelectedLeadForInfo(null); // Fermer les modales
     setSelectedLeadForConversation(null);
+
+    // Nettoyer sessionStorage ET localStorage
     sessionStorage.removeItem('emkai_user');
+    localStorage.removeItem('emkai_user');
+
+    // Ne pas supprimer rememberedEmail (pour pré-remplir le champ email)
+    // localStorage.removeItem('rememberedEmail');
+    // localStorage.removeItem('rememberMe');
+
     console.log('✅ Déconnexion réussie');
-  };
-
-  const handleMarkContacted = async (leadId) => {
-    // Trouver le lead pour vérifier son état actuel
-    const currentLead = leads.find(lead => lead.id === leadId);
-    const isCurrentlyContacted = currentLead?.statut === "CONTACTE";
-
-    // Toggle: si déjà contacté, on remet à "Qualifié", sinon on marque comme contacté
-    const newStatut = isCurrentlyContacted ? "QUALIFIE" : "CONTACTE";
-    const newContactedValue = !isCurrentlyContacted;
-
-    // Mettre à jour localement immédiatement
-    setLeads(prevLeads =>
-      prevLeads.map(lead =>
-        lead.id === leadId ? { ...lead, statut: newStatut, contacted: newContactedValue } : lead
-      )
-    );
-
-    // Mettre à jour dans Airtable en arrière-plan
-    try {
-      const { updateLeadInAirtable } = await import('./services/airtable');
-      // Mettre à jour uniquement le champ Statut (le champ "contacté" n'existe pas dans Airtable)
-      await updateLeadInAirtable(leadId, {
-        Statut: isCurrentlyContacted ? "Qualifié" : "Contacté"
-      });
-    } catch (error) {
-      console.error('❌ Erreur lors de la mise à jour du lead dans Airtable:', error);
-      // On garde quand même le changement local même si Airtable échoue
-    }
   };
 
   // Gérer la mise à jour d'un lead (par exemple après assignation)
@@ -266,15 +305,15 @@ function App() {
       <div className="min-h-screen bg-dark-bg flex items-center justify-center">
         <div className="text-center max-w-md mx-auto p-8 bg-dark-card rounded-2xl border border-red-500/20">
           <div className="text-6xl mb-4">⚠️</div>
-          <h2 className="text-white text-2xl font-bold mb-4">Erreur de connexion Airtable</h2>
+          <h2 className="text-white text-2xl font-bold mb-4">Erreur de connexion</h2>
           <p className="text-gray-400 mb-6">{error}</p>
           <div className="text-left bg-gray-900/50 p-4 rounded-lg mb-6">
             <p className="text-sm text-gray-300 mb-2">Vérifiez :</p>
             <ul className="text-xs text-gray-400 space-y-1">
-              <li>✓ Votre token Airtable est valide</li>
-              <li>✓ Votre Base ID est correct</li>
-              <li>✓ Le nom de votre table est exact</li>
-              <li>✓ Les permissions du token (read/write)</li>
+              <li>✓ Votre connexion internet</li>
+              <li>✓ La configuration Supabase (URL et clé)</li>
+              <li>✓ Votre client_id est correct</li>
+              <li>✓ Les permissions de la table leads</li>
             </ul>
           </div>
           <button
@@ -292,25 +331,29 @@ function App() {
   const getBaseLeadsForView = () => {
     if (currentView === 'a_traiter') {
       // VUE 1: À TRAITER - Statut = "QUALIFIE" AND (Agent = null OR Agent = Moi)
+      // EXCLURE les leads avec visite programmée ET ceux avec date_visite renseignée
       return leads.filter(lead =>
         lead.statut === 'QUALIFIE' &&
+        lead.statut !== 'VISITE_PROGRAMMEE' && // Exclure explicitement les visites programmées
+        !lead.date_visite && // Exclure aussi par la présence d'une date de visite
         (!lead.agent_en_charge || lead.agent_en_charge === currentUser?.name)
       );
     } else if (currentView === 'en_cours') {
       // VUE 2: EN DÉCOUVERTE - Statut = "CONTACTÉ" or "EN DÉCOUVERTE"
       // Pour les agents : uniquement leurs dossiers (Agent = Moi)
-      // Pour les managers : tous les dossiers contactés/en découverte
+      // Pour les managers : tous les dossiers en découverte
       return leads.filter(lead => {
-        const hasCorrectStatus = lead.statut === 'CONTACTE' || lead.statut === 'EN_DECOUVERTE';
+        const hasCorrectStatus = lead.statut === 'EN_DECOUVERTE';
         const isManager = currentUser?.role === 'manager';
         const isAssignedToMe = lead.agent_en_charge === currentUser?.name;
 
         return hasCorrectStatus && (isManager || isAssignedToMe);
       });
     } else if (currentView === 'visites') {
-      // VUE 3: VISITES - Statut = "VISITE PROGRAMMÉE" uniquement
+      // VUE 3: VISITES - Statut = "VISITE PROGRAMMÉE" OU présence d'une date_visite
+      // Inclure tous les leads qui ont une visite programmée (par statut OU par date)
       return leads.filter(lead =>
-        lead.statut === 'VISITE_PROGRAMMEE'
+        lead.statut === 'VISITE_PROGRAMMEE' || lead.date_visite
       );
     } else if (currentView === 'relance') {
       // VUE 4: RELANCE - Score = "TIÈDE" or "FROID"
@@ -457,6 +500,9 @@ function App() {
             onLogout={handleLogout}
             onUserUpdate={setCurrentUser}
           />
+        ) : currentView === 'kpi' ? (
+          /* Vue Statistiques KPI */
+          <KpiStats leads={leads} />
         ) : currentView === 'a_traiter' ? (
           <>
             {/* Cockpit KPIs - uniquement sur la vue "À Traiter" */}
@@ -466,7 +512,6 @@ function App() {
             <HitList
               leads={leads}
               selectedFilter={selectedFilter}
-              onMarkContacted={handleMarkContacted}
               currentUser={currentUser}
               onLeadUpdate={handleLeadUpdate}
               onOpenInfoModal={setSelectedLeadForInfo}
@@ -519,6 +564,14 @@ function App() {
                 onOpenConversationModal={setSelectedLeadForConversation}
                 agency={currentUser?.agency}
               />
+            ) : currentView === 'relance' ? (
+              /* Vue spéciale pour les relances */
+              <RelanceView
+                leads={leads}
+                currentUser={currentUser}
+                onOpenConversationModal={setSelectedLeadForConversation}
+                agency={currentUser?.agency}
+              />
             ) : (
               /* Liste des prospects filtrés selon la vue */
               <>
@@ -528,7 +581,6 @@ function App() {
                       <LeadCard
                         key={lead.id}
                         lead={lead}
-                        onMarkContacted={handleMarkContacted}
                         currentUser={currentUser}
                         onLeadUpdate={handleLeadUpdate}
                         onOpenInfoModal={setSelectedLeadForInfo}
