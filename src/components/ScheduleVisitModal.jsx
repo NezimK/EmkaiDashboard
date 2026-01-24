@@ -107,19 +107,31 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
       }
 
       // 3️⃣ Envoyer un message WhatsApp de confirmation au prospect
+      console.log('📱 [WhatsApp] lead.phone:', lead.phone, 'lead.telephone:', lead.telephone);
       if (lead.phone || lead.telephone) {
+        console.log('📱 [WhatsApp] Envoi du message de confirmation...');
+        console.log('📱 [WhatsApp] Agency (client_id):', agency);
         try {
+          // Récupérer l'adresse depuis bienDetails si lead.adresse est null
+          const adresseBien = lead.adresse || lead.bienDetails?.adresse || null;
+          console.log('📱 [WhatsApp] lead.adresse:', lead.adresse);
+          console.log('📱 [WhatsApp] lead.bienDetails:', lead.bienDetails);
+          console.log('📱 [WhatsApp] adresseBien finale:', adresseBien);
+
           const whatsappResult = await sendVisitConfirmationWhatsApp(agency, {
-            id: lead.id, // Ajouter le record ID
+            id: lead.id,
             nom: lead.nom,
             telephone: lead.phone || lead.telephone,
-            adresse: lead.adresse,
+            adresse: adresseBien,
             bien: lead.bien,
             bienDetails: lead.bienDetails
           }, dateTime.toISOString());
 
+          console.log('📱 [WhatsApp] Résultat:', whatsappResult);
           if (!whatsappResult.success) {
             console.error('⚠️ Message WhatsApp de confirmation non envoyé:', whatsappResult.error);
+          } else {
+            console.log('✅ [WhatsApp] Message envoyé avec succès');
           }
         } catch (whatsappError) {
           console.error('❌ Erreur lors de l\'envoi du message WhatsApp:', whatsappError);
@@ -129,13 +141,18 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
 
       // 4️⃣ Synchronisation automatique avec le calendrier
       const userDataString = sessionStorage.getItem('emkai_user');
+      console.log('📅 [Calendar Sync] userDataString:', userDataString);
       if (userDataString) {
         const userData = JSON.parse(userDataString);
+        console.log('📅 [Calendar Sync] userData.id:', userData.id);
+        console.log('📅 [Calendar Sync] userData:', userData);
 
         // Vérifier si Google Calendar est connecté via OAuth
         const isGoogleConnected = await checkGoogleCalendarStatus(userData.id);
+        console.log('📅 [Calendar Sync] isGoogleConnected:', isGoogleConnected);
 
         if (isGoogleConnected) {
+          console.log('📅 [Calendar Sync] Google Calendar est connecté, création de l\'événement...');
           try {
             // Si une visite existait déjà, supprimer l'ancien événement Google Calendar
             if (lead.googleCalendarEventId && lead.date_visite) {
@@ -156,7 +173,9 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
               endDateTime: new Date(dateTime.getTime() + 60 * 60 * 1000).toISOString() // Durée : 1 heure
             };
 
+            console.log('📅 [Calendar Sync] Appel createGoogleCalendarEvent avec eventDetails:', eventDetails);
             const result = await createGoogleCalendarEvent(userData.id, eventDetails);
+            console.log('📅 [Calendar Sync] Résultat création événement:', result);
 
             // Sauvegarder l'eventId dans Supabase pour permettre la suppression ultérieure
             await updateLead(agency, lead.id, {
@@ -173,6 +192,7 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
             });
           }
         } else {
+          console.log('📅 [Calendar Sync] Google Calendar NON connecté, fallback vers export manuel');
           // Fallback : Export manuel pour Outlook ou autres calendriers
           const connectedCalendar = sessionStorage.getItem(`calendar_${agency}_${userData.email}`);
           if (connectedCalendar) {

@@ -3,33 +3,23 @@ import { Target } from 'lucide-react';
 import LeadCard from './LeadCard';
 
 const HitList = ({ leads, selectedFilter, currentUser, onLeadUpdate, onOpenInfoModal, onOpenConversationModal, agency }) => {
-  // Filtrer les leads selon le filtre sélectionné
-  let filteredLeads = leads;
+  // Filtrer uniquement les leads QUALIFIES (à traiter)
+  // Exclure : PRE_QUALIFICATION, EN_DECOUVERTE, VISITE_PROGRAMMEE, ARCHIVE
+  let filteredLeads = leads.filter(lead =>
+    lead.statut === "QUALIFIE" &&
+    lead.statut !== "VISITE_PROGRAMMEE" &&
+    !lead.date_visite
+  );
 
-  if (selectedFilter === "EN_COURS") {
-    // Filtre spécial pour les leads "En cours"
-    filteredLeads = leads.filter(lead => lead.statut === "EN_COURS");
-  } else {
-    // Filtrer uniquement les leads QUALIFIES (à traiter)
-    // Exclure : EN_COURS, EN_DECOUVERTE, VISITE_PROGRAMMEE, ARCHIVE
-    filteredLeads = leads.filter(lead =>
-      lead.statut !== "EN_COURS" &&
-      lead.statut !== "EN_DECOUVERTE" &&
-      lead.statut !== "VISITE_PROGRAMMEE" &&
-      lead.statut !== "ARCHIVE"
-    );
+  // IMPORTANT: Exclure les leads assignés à d'autres agents
+  // Ne montrer que les leads libres (agent_en_charge vide) OU assignés à moi
+  filteredLeads = filteredLeads.filter(lead =>
+    !lead.agent_en_charge || lead.agent_en_charge === currentUser?.name
+  );
 
-    // IMPORTANT: Exclure les leads assignés à d'autres agents
-    // Ne montrer que les leads libres (agent_en_charge vide) OU assignés à moi
-    filteredLeads = filteredLeads.filter(lead =>
-      !lead.agent_en_charge || lead.agent_en_charge === currentUser?.name
-    );
-
-    if (selectedFilter) {
-      // Si un filtre est actif, filtrer par score
-      filteredLeads = filteredLeads.filter(lead => lead.score === selectedFilter);
-    }
-    // Sinon, afficher TOUS les leads entrants (pas de filtre supplémentaire)
+  if (selectedFilter) {
+    // Si un filtre est actif, filtrer par score
+    filteredLeads = filteredLeads.filter(lead => lead.score === selectedFilter);
   }
 
   // Trier par date de création : les plus ANCIENS en premier (fenêtre 24h)
@@ -41,28 +31,14 @@ const HitList = ({ leads, selectedFilter, currentUser, onLeadUpdate, onOpenInfoM
 
   // Déterminer le titre selon le filtre
   const getTitle = () => {
-    if (selectedFilter === "CHAUD") return "À Traiter d'Urgence";
-    if (selectedFilter === "TIEDE") return "Projets à Suivre";
-    if (selectedFilter === "FROID") return "Prospects Froids";
-    if (selectedFilter === "EN_COURS") return "En cours...";
-    return "À Traiter d'Urgence";
+    if (selectedFilter === "CHAUD") return "Acquéreurs prêts";
+    if (selectedFilter === "TIEDE") return "Projet en maturation";
+    if (selectedFilter === "FROID") return "Demande exploratoire";
+    return "Dossiers à traiter";
   };
 
   return (
     <section className="mb-8">
-      {/* Title */}
-      <div className="flex items-center space-x-3 mb-6">
-        <div className="p-2 bg-accent/10 rounded-lg">
-          <Target className="w-6 h-6 text-accent" />
-        </div>
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-          {getTitle()}
-        </h2>
-        <span className="px-3 py-1 bg-accent/20 text-accent rounded-full text-sm font-semibold">
-          {filteredLeads.length}
-        </span>
-      </div>
-
       {/* Cards Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {filteredLeads.map(lead => (

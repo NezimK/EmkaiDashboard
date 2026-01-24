@@ -21,31 +21,76 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
  * Normalise le statut vers le format uniforme de l'app
  */
 function normalizeStatus(status) {
-  if (!status) return 'EN_COURS';
+  if (!status) return 'PRE_QUALIFICATION';
 
   const statusMapping = {
+    // New = Lead en pré-qualification par l'IA
+    'New': 'PRE_QUALIFICATION',
+    'new': 'PRE_QUALIFICATION',
+    'NEW': 'PRE_QUALIFICATION',
+    // In_Progress = Lead en pré-qualification par l'IA
+    'In_Progress': 'PRE_QUALIFICATION',
+    'in_progress': 'PRE_QUALIFICATION',
+    'IN_PROGRESS': 'PRE_QUALIFICATION',
+    'PRE_QUALIFICATION': 'PRE_QUALIFICATION',
+    'pre_qualification': 'PRE_QUALIFICATION',
+    // Qualified = Lead qualifié prêt à être traité par un agent
+    'Qualified': 'QUALIFIE',
+    'qualified': 'QUALIFIE',
+    'QUALIFIED': 'QUALIFIE',
     'Qualifié': 'QUALIFIE',
     'QUALIFIE': 'QUALIFIE',
     'qualifie': 'QUALIFIE',
-    'En-cours': 'EN_COURS',
-    'En_cours': 'EN_COURS',
-    'En_Cours': 'EN_COURS',
-    'EN_COURS': 'EN_COURS',
-    'en_cours': 'EN_COURS',
+    // En découverte = Lead pris en charge par un agent
     'En Découverte': 'EN_DECOUVERTE',
     'En découverte': 'EN_DECOUVERTE',
     'EN_DECOUVERTE': 'EN_DECOUVERTE',
     'en_decouverte': 'EN_DECOUVERTE',
+    // Visite programmée
     'Visite Programmée': 'VISITE_PROGRAMMEE',
     'Visite programmée': 'VISITE_PROGRAMMEE',
     'VISITE_PROGRAMMEE': 'VISITE_PROGRAMMEE',
     'visite_programmee': 'VISITE_PROGRAMMEE',
+    // Archivé
     'Archivé': 'ARCHIVE',
     'ARCHIVE': 'ARCHIVE',
     'archive': 'ARCHIVE',
   };
 
   return statusMapping[status] || status;
+}
+
+/**
+ * Normalise le score vers le format uniforme de l'app
+ */
+function normalizeScore(score) {
+  if (!score) return 'TIEDE';
+
+  const scoreMapping = {
+    // HOT = Chaud
+    'HOT': 'CHAUD',
+    'hot': 'CHAUD',
+    'Hot': 'CHAUD',
+    'CHAUD': 'CHAUD',
+    'chaud': 'CHAUD',
+    'Chaud': 'CHAUD',
+    // WARM = Tiède
+    'WARM': 'TIEDE',
+    'warm': 'TIEDE',
+    'Warm': 'TIEDE',
+    'TIEDE': 'TIEDE',
+    'tiede': 'TIEDE',
+    'Tiède': 'TIEDE',
+    // COLD = Froid
+    'COLD': 'FROID',
+    'cold': 'FROID',
+    'Cold': 'FROID',
+    'FROID': 'FROID',
+    'froid': 'FROID',
+    'Froid': 'FROID',
+  };
+
+  return scoreMapping[score] || score;
 }
 
 /**
@@ -95,15 +140,22 @@ function formatLeadFromDatabase(record, bienDetails = null) {
     }
   }
 
-  // Normaliser le statut
+  // Normaliser le statut et le score
   const statut = normalizeStatus(record.status);
+  const score = normalizeScore(record.score);
+
+  // Debug: afficher le statut et score bruts et normalisés
+  console.log(`🔍 Lead "${nom}" - Statut: "${record.status}" → "${statut}", Score: "${record.score}" → "${score}"`);
+
+  // Debug: afficher property_reference et bienDetails
+  console.log(`🏠 Lead "${nom}" - property_reference: "${record.property_reference}", bienDetails:`, bienDetails);
 
   return {
     id: record.id,
     nom: nom,
     email: record.email || '',
     telephone: record.phone || '',
-    score: record.score || 'TIEDE',
+    score: score,
     statut: statut,
     summary: record.notes || '',
     stop_ai: record.pause_ai || false,
@@ -113,6 +165,7 @@ function formatLeadFromDatabase(record, bienDetails = null) {
     bienDetails: bienDetails,
     secteur: record.source || 'Non défini',
     adresse: bienDetails?.adresse || null,
+    property_reference: record.property_reference || null, // Ajouter pour debug
     delai: record.timeline || 'Non défini',
     conversation: conversation,
     agent_en_charge: record.assigned_agent || null,
@@ -132,10 +185,22 @@ function formatLeadFromDatabase(record, bienDetails = null) {
 function formatBienFromDatabase(record) {
   if (!record) return null;
 
+  // Construire l'adresse complète avec adresse, code_postal et ville
+  let adresseComplete = null;
+  if (record.adresse || record.code_postal || record.ville) {
+    const parts = [];
+    if (record.adresse) parts.push(record.adresse);
+    if (record.code_postal || record.ville) {
+      const codeVille = [record.code_postal, record.ville].filter(Boolean).join(' ');
+      if (codeVille) parts.push(codeVille);
+    }
+    adresseComplete = parts.join(', ');
+  }
+
   return {
     id: record.id,
     nom: record.ref_externe || record.titre || 'Bien sans référence',
-    adresse: record.adresse ? `${record.adresse}${record.ville ? ', ' + record.ville : ''}` : null,
+    adresse: adresseComplete,
     type: record.type_bien || null,
     prix: record.prix_vente || record.loyer || null,
     surface: record.surface || null,
@@ -154,27 +219,86 @@ function formatBienFromDatabase(record) {
  * @returns {Promise<Object|null>} Les détails du bien ou null
  */
 async function fetchBienDetails(propertyReference, clientId) {
-  if (!propertyReference) return null;
+  if (!propertyReference) {
+    console.log('🏠 [fetchBienDetails] Pas de property_reference');
+    return null;
+  }
+
+  // Nettoyer la référence (enlever espaces avant/après)
+  const cleanRef = propertyReference.trim();
+
+  console.log(`🏠 [fetchBienDetails] Recherche du bien: "${cleanRef}" (length: ${cleanRef.length}) pour client: ${clientId}`);
 
   try {
-    const { data, error } = await supabase
+    // D'abord, cherchons le bien SANS filtre client_id pour voir s'il existe
+    const { data: debugData } = await supabase
+      .from('biens')
+      .select('id, ref_externe, client_id')
+      .eq('ref_externe', cleanRef)
+      .limit(5);
+
+    console.log(`🔍 [DEBUG] Biens avec ref_externe="${cleanRef}" (sans filtre client_id):`, debugData);
+
+    if (debugData && debugData.length > 0) {
+      console.log(`🔍 [DEBUG] client_id du bien trouvé: "${debugData[0].client_id}"`);
+      console.log(`🔍 [DEBUG] client_id recherché: "${clientId}"`);
+      console.log(`🔍 [DEBUG] Sont-ils égaux?: ${debugData[0].client_id === clientId}`);
+    }
+
+    // Essayer d'abord avec ref_externe
+    let { data, error } = await supabase
       .from('biens')
       .select('*')
       .eq('client_id', clientId)
-      .or(`ref_externe.eq.${propertyReference},netty_id.eq.${propertyReference}`)
+      .eq('ref_externe', cleanRef)
       .limit(1);
 
     if (error) {
-      console.warn(`⚠️ Erreur lors de la récupération du bien ${propertyReference}:`, error.message);
+      console.warn(`⚠️ Erreur lors de la récupération du bien ${cleanRef}:`, error.message);
       return null;
     }
+
+    // Si pas trouvé, essayer avec netty_id
+    if (!data || data.length === 0) {
+      console.log(`🏠 [fetchBienDetails] Pas trouvé avec ref_externe, essai avec netty_id...`);
+      const result = await supabase
+        .from('biens')
+        .select('*')
+        .eq('client_id', clientId)
+        .eq('netty_id', cleanRef)
+        .limit(1);
+
+      data = result.data;
+      error = result.error;
+    }
+
+    console.log(`🏠 [fetchBienDetails] Résultat de la requête:`, data);
 
     // Prendre le premier résultat s'il existe
     if (!data || data.length === 0) {
+      // Si on a trouvé le bien sans filtre client_id, utiliser celui-là
+      if (debugData && debugData.length > 0) {
+        console.log(`🏠 [fetchBienDetails] Utilisation du bien trouvé sans filtre client_id`);
+        const { data: bienData } = await supabase
+          .from('biens')
+          .select('*')
+          .eq('id', debugData[0].id)
+          .single();
+
+        if (bienData) {
+          const formatted = formatBienFromDatabase(bienData);
+          console.log(`🏠 [fetchBienDetails] Bien formaté (fallback):`, formatted);
+          return formatted;
+        }
+      }
+
+      console.warn(`⚠️ [fetchBienDetails] Aucun bien trouvé pour ref: ${cleanRef}`);
       return null;
     }
 
-    return formatBienFromDatabase(data[0]);
+    const formatted = formatBienFromDatabase(data[0]);
+    console.log(`🏠 [fetchBienDetails] Bien formaté:`, formatted);
+    return formatted;
   } catch (error) {
     console.error('❌ Erreur lors de la récupération des détails du bien:', error);
     return null;
@@ -543,23 +667,18 @@ export async function sendVisitConfirmationWhatsApp(clientId, leadData, visitDat
       minute: '2-digit',
     });
 
-    // Formater le prix
-    const prixFormate = leadData.bienDetails?.prix
-      ? `${parseInt(leadData.bienDetails.prix).toLocaleString('fr-FR')} €`
-      : 'Sur demande';
-
     // Message WhatsApp de confirmation
     const message = `✅ *Confirmation de votre visite*
 
 Bonjour ${leadData.nom},
 
-Nous avons le plaisir de confirmer votre rendez-vous au : ${leadData.adresse ? `📍 ${leadData.adresse}` : ''} .
+Nous avons le plaisir de confirmer votre rendez-vous de visite immobilière.
 
-📆 Date : ${formattedDate}
-🕐 Heure : ${formattedTime}
-${leadData.adresse ? `📍 Lieu : ${leadData.adresse}` : ''}
-
-${leadData.adresse ? `🗺️ Voir l'itinéraire : https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(leadData.adresse)}` : ''}
+📆 *Date :* ${formattedDate}
+🕐 *Heure :* ${formattedTime}
+${leadData.adresse ? `📍 *Adresse :* ${leadData.adresse}` : ''}
+${leadData.adresse ? `
+🗺️ *Itinéraire :* https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(leadData.adresse)}` : ''}
 
 À très bientôt ! 🤝`;
 

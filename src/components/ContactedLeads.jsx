@@ -54,7 +54,7 @@ const ContactedLeads = ({ leads, onMarkContacted, currentUser, onLeadUpdate }) =
             }`}
           >
             <Flame className="w-4 h-4" />
-            <span>Chauds</span>
+            <span>HOT</span>
           </button>
           <button
             onClick={() => setFilter('TIEDE')}
@@ -65,7 +65,7 @@ const ContactedLeads = ({ leads, onMarkContacted, currentUser, onLeadUpdate }) =
             }`}
           >
             <Zap className="w-4 h-4" />
-            <span>Tièdes</span>
+            <span>WARM</span>
           </button>
           <button
             onClick={() => setFilter('FROID')}
@@ -76,7 +76,7 @@ const ContactedLeads = ({ leads, onMarkContacted, currentUser, onLeadUpdate }) =
             }`}
           >
             <Snowflake className="w-4 h-4" />
-            <span>Froids</span>
+            <span>COLD</span>
           </button>
         </div>
       </div>

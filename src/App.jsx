@@ -14,7 +14,7 @@ import FilterBar from './components/FilterBar';
 import KpiStats from './components/KpiStats';
 import RelanceView from './components/RelanceView';
 import { fetchLeads, subscribeToLeads, unsubscribeFromLeads } from './services/supabase';
-import { validateLogin } from './data/users';
+import { authApi } from './services/authApi';
 
 function App() {
   const [darkMode, setDarkMode] = useState(true);
@@ -26,35 +26,34 @@ function App() {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [currentView, setCurrentView] = useState('a_traiter'); // 'a_traiter', 'en_cours', 'visites', 'relance', 'manager', 'settings'
+  const [currentView, setCurrentView] = useState('a_traiter'); // 'pre_qualification', 'a_traiter', 'en_decouverte', 'visites', 'relance', 'manager', 'settings'
   const [selectedLeadForInfo, setSelectedLeadForInfo] = useState(null); // Lead sélectionné pour la modal Info
   const [selectedLeadForConversation, setSelectedLeadForConversation] = useState(null); // Lead sélectionné pour la modal Conversation
 
   // Calculer les KPIs depuis les leads en temps réel
   const getKPIs = () => {
-    // Les leads Chauds/Tièdes/Froids = seulement les NON en cours, NON en découverte, NON visite programmée
-    // ET qui ne sont pas assignés à d'autres agents
-    const nonContactedLeads = leads.filter(lead =>
-      lead.statut !== "EN_COURS" &&
-      lead.statut !== "EN_DECOUVERTE" &&
-      lead.statut !== "VISITE_PROGRAMMEE" && // Exclure les visites programmées
-      !lead.date_visite && // Exclure aussi par la date de visite
-      lead.statut !== "ARCHIVE" && // Exclure les archivés
+    // Leads qualifiés = statut QUALIFIE, non en visite, non archivés
+    const qualifiedLeads = leads.filter(lead =>
+      lead.statut === "QUALIFIE" &&
+      lead.statut !== "VISITE_PROGRAMMEE" &&
+      !lead.date_visite &&
+      lead.statut !== "ARCHIVE" &&
       (!lead.agent_en_charge || lead.agent_en_charge === currentUser?.name)
     );
-    const leadsChauds = nonContactedLeads.filter(lead => lead.score === "CHAUD").length;
-    const leadsTiedes = nonContactedLeads.filter(lead => lead.score === "TIEDE").length;
-    const leadsFroids = nonContactedLeads.filter(lead => lead.score === "FROID").length;
 
-    // Leads En cours = statut "EN_COURS" (déjà mappé depuis "En-cours" ou "En_cours" par supabase.js)
-    const leadsEnCoursFiltered = leads.filter(lead => lead.statut === "EN_COURS");
-    const leadsEnCours = leadsEnCoursFiltered.length;
+    // Leads HOT/WARM/COLD parmi les qualifiés
+    const leadsHot = qualifiedLeads.filter(lead => lead.score === "CHAUD").length;
+    const leadsWarm = qualifiedLeads.filter(lead => lead.score === "TIEDE").length;
+    const leadsCold = qualifiedLeads.filter(lead => lead.score === "FROID").length;
+
+    // Leads en pré-qualification IA
+    const leadsPreQualification = leads.filter(lead => lead.statut === "PRE_QUALIFICATION").length;
 
     return {
-      leadsChauds,
-      leadsTiedes,
-      leadsFroids,
-      leadsEnCours
+      leadsHot,
+      leadsWarm,
+      leadsCold,
+      leadsPreQualification
     };
   };
 
@@ -130,50 +129,56 @@ function App() {
     };
   }, [isAuthenticated, currentUser?.client_id, currentUser?.agency]);
 
-  // Vérifier si un utilisateur est déjà connecté (sessionStorage ou localStorage)
-  // sessionStorage : garde la session pendant les rafraîchissements, mais déconnecte à la fermeture du navigateur
-  // localStorage : garde la session même après fermeture du navigateur (si "Se souvenir de moi")
+  // Vérifier si un utilisateur est déjà connecté via les tokens JWT
   useEffect(() => {
-    // D'abord vérifier sessionStorage (prioritaire)
-    let savedUser = sessionStorage.getItem('emkai_user');
-    let storageType = 'session';
-
-    // Si pas de session, vérifier localStorage (connexion persistante)
-    if (!savedUser) {
-      savedUser = localStorage.getItem('emkai_user');
-      storageType = 'local';
-    }
-
-    if (savedUser) {
-      try {
-        const user = JSON.parse(savedUser);
-
-        // Validation de sécurité : vérifier que l'utilisateur a tous les champs requis
-        if (user && user.agency && user.agencyName && user.email && user.name && user.role) {
-          setCurrentUser(user);
-          setIsAuthenticated(true);
-          console.log(`✅ Session restaurée depuis ${storageType}Storage`);
-
-          // Si restauré depuis localStorage, copier aussi dans sessionStorage pour cette session
-          if (storageType === 'local') {
-            sessionStorage.setItem('emkai_user', savedUser);
+    const restoreSession = async () => {
+      // Vérifier si des tokens sont stockés
+      if (!authApi.loadStoredTokens()) {
+        // Pas de tokens, essayer l'ancien format (migration)
+        const savedUser = sessionStorage.getItem('emkai_user') || localStorage.getItem('emkai_user');
+        if (savedUser) {
+          try {
+            const user = JSON.parse(savedUser);
+            if (user && user.agency && user.email && user.name && user.role) {
+              // Ancien format sans JWT - garder temporairement pour migration
+              const userWithClientId = { ...user, client_id: user.tenant_id || user.agency };
+              setCurrentUser(userWithClientId);
+              setIsAuthenticated(true);
+              console.log('⚠️ Session restaurée (ancien format, reconnexion recommandée)');
+              return;
+            }
+          } catch (e) {
+            console.warn('Erreur parsing session:', e);
           }
-        } else {
-          // Si les données sont incomplètes, forcer la déconnexion
-          console.warn('Session invalide : données utilisateur incomplètes');
-          sessionStorage.removeItem('emkai_user');
-          localStorage.removeItem('emkai_user');
-          setIsAuthenticated(false);
-          setCurrentUser(null);
         }
+        return;
+      }
+
+      // Tokens trouvés, valider avec l'API
+      try {
+        const user = await authApi.getCurrentUser();
+        const userWithClientId = { ...user, client_id: user.tenant_id };
+
+        setCurrentUser(userWithClientId);
+        setIsAuthenticated(true);
+
+        // Sauvegarder les infos utilisateur
+        const userJSON = JSON.stringify(userWithClientId);
+        sessionStorage.setItem('emkai_user', userJSON);
+
+        console.log('✅ Session restaurée via JWT');
       } catch (error) {
-        console.error('Erreur lors de la lecture de la session:', error);
+        console.warn('Session expirée ou invalide:', error.message);
+        // Nettoyer les tokens invalides
+        authApi.clearTokens();
         sessionStorage.removeItem('emkai_user');
         localStorage.removeItem('emkai_user');
         setIsAuthenticated(false);
         setCurrentUser(null);
       }
-    }
+    };
+
+    restoreSession();
   }, []);
 
   // Gérer le dark mode
@@ -202,15 +207,22 @@ function App() {
     setViewFilter(null);
   }, [currentView]);
 
-  const handleLogin = (email, password, rememberMe = false) => {
-    const result = validateLogin(email, password);
+  const handleLogin = async (email, password, rememberMe = false) => {
+    try {
+      // Authentification via l'API backend
+      const user = await authApi.login(email, password);
 
-    if (result.success) {
-      setCurrentUser(result.user);
+      // Ajouter client_id comme alias de tenant_id pour compatibilité
+      const userWithClientId = {
+        ...user,
+        client_id: user.tenant_id
+      };
+
+      setCurrentUser(userWithClientId);
       setIsAuthenticated(true);
       setLoginError('');
 
-      const userJSON = JSON.stringify(result.user);
+      const userJSON = JSON.stringify(userWithClientId);
 
       // Toujours sauvegarder dans sessionStorage (pour la session actuelle)
       sessionStorage.setItem('emkai_user', userJSON);
@@ -224,17 +236,25 @@ function App() {
         localStorage.removeItem('emkai_user');
         console.log('✅ Session sauvegardée (session uniquement)');
       }
-    } else {
-      setLoginError(result.error);
+    } catch (error) {
+      console.error('Erreur de connexion:', error);
+      setLoginError(error.message || 'Erreur de connexion');
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Déconnexion via l'API (révocation du refresh token)
+    try {
+      await authApi.logout();
+    } catch (error) {
+      console.warn('Erreur lors de la déconnexion:', error);
+    }
+
     // Nettoyage complet de la session
     setIsAuthenticated(false);
     setCurrentUser(null);
     setSelectedFilter(null);
-    setCurrentView('a_traiter'); // Remettre sur la vue "À Traiter"
+    setCurrentView('a_traiter'); // Remettre sur la vue par défaut
     setLeads([]); // Vider les leads pour sécurité
     setSelectedLeadForInfo(null); // Fermer les modales
     setSelectedLeadForConversation(null);
@@ -329,25 +349,29 @@ function App() {
 
   // Obtenir les leads de base pour la vue (sans appliquer viewFilter)
   const getBaseLeadsForView = () => {
-    if (currentView === 'a_traiter') {
-      // VUE 1: À TRAITER - Statut = "QUALIFIE" AND (Agent = null OR Agent = Moi)
+    if (currentView === 'pre_qualification') {
+      // VUE: PRÉ-QUALIFICATION IA - Leads en cours de qualification par l'IA (New, In_Progress)
+      return leads.filter(lead => lead.statut === 'PRE_QUALIFICATION');
+    } else if (currentView === 'a_traiter') {
+      // VUE: À TRAITER - Leads QUALIFIÉS, filtrés par score via le Cockpit
       // EXCLURE les leads avec visite programmée ET ceux avec date_visite renseignée
       return leads.filter(lead =>
         lead.statut === 'QUALIFIE' &&
-        lead.statut !== 'VISITE_PROGRAMMEE' && // Exclure explicitement les visites programmées
-        !lead.date_visite && // Exclure aussi par la présence d'une date de visite
+        lead.statut !== 'VISITE_PROGRAMMEE' &&
+        !lead.date_visite &&
         (!lead.agent_en_charge || lead.agent_en_charge === currentUser?.name)
       );
-    } else if (currentView === 'en_cours') {
-      // VUE 2: EN DÉCOUVERTE - Statut = "CONTACTÉ" or "EN DÉCOUVERTE"
-      // Pour les agents : uniquement leurs dossiers (Agent = Moi)
-      // Pour les managers : tous les dossiers en découverte
+    } else if (currentView === 'en_decouverte') {
+      // VUE: EN DÉCOUVERTE - Leads pris en charge par un agent
+      // Pour les agents : uniquement leurs dossiers
+      // Pour les managers : tous les dossiers
       return leads.filter(lead => {
-        const hasCorrectStatus = lead.statut === 'EN_DECOUVERTE';
+        const isEnDecouverte = lead.statut === 'EN_DECOUVERTE';
         const isManager = currentUser?.role === 'manager';
         const isAssignedToMe = lead.agent_en_charge === currentUser?.name;
 
-        return hasCorrectStatus && (isManager || isAssignedToMe);
+        if (isEnDecouverte) return isManager || isAssignedToMe;
+        return false;
       });
     } else if (currentView === 'visites') {
       // VUE 3: VISITES - Statut = "VISITE PROGRAMMÉE" OU présence d'une date_visite
@@ -376,10 +400,10 @@ function App() {
   const getFilteredLeads = () => {
     let baseLeads = getBaseLeadsForView();
 
-    // Appliquer le filtre de vue si présent
+    // Appliquer le filtre de vue si présent (pour la vue a_traiter via Cockpit)
     if (viewFilter) {
-      if (currentView === 'en_cours') {
-        // Filtrer par score uniquement
+      if (currentView === 'a_traiter') {
+        // Filtrer par score
         if (viewFilter === 'CHAUD' || viewFilter === 'TIEDE' || viewFilter === 'FROID') {
           baseLeads = baseLeads.filter(lead => lead.score === viewFilter);
         }
@@ -398,34 +422,16 @@ function App() {
   const getViewFilters = () => {
     const baseLeads = getBaseLeadsForView();
 
-    if (currentView === 'en_cours') {
+    if (currentView === 'relance') {
       return [
         {
-          value: 'CHAUD',
-          label: 'Chaud',
-          count: baseLeads.filter(l => l.score === 'CHAUD').length
-        },
-        {
           value: 'TIEDE',
-          label: 'Tiède',
+          label: 'WARM',
           count: baseLeads.filter(l => l.score === 'TIEDE').length
         },
         {
           value: 'FROID',
-          label: 'Froid',
-          count: baseLeads.filter(l => l.score === 'FROID').length
-        },
-      ];
-    } else if (currentView === 'relance') {
-      return [
-        {
-          value: 'TIEDE',
-          label: 'Tiède',
-          count: baseLeads.filter(l => l.score === 'TIEDE').length
-        },
-        {
-          value: 'FROID',
-          label: 'Froid',
+          label: 'COLD',
           count: baseLeads.filter(l => l.score === 'FROID').length
         },
       ];
@@ -436,15 +442,20 @@ function App() {
 
   // Titre et description dynamique selon la vue
   const getViewInfo = () => {
-    if (currentView === 'a_traiter') {
+    if (currentView === 'pre_qualification') {
+      return {
+        title: 'Pré-qualification IA',
+        description: 'Leads en cours de qualification automatique par l\'IA'
+      };
+    } else if (currentView === 'a_traiter') {
       return {
         title: 'À Traiter',
         description: 'Prospects qualifiés prêts à être contactés'
       };
-    } else if (currentView === 'en_cours') {
+    } else if (currentView === 'en_decouverte') {
       return {
         title: 'En Découverte',
-        description: 'Prospects en cours de qualification'
+        description: 'Dossiers pris en charge par un agent'
       };
     } else if (currentView === 'visites') {
       return {
@@ -508,7 +519,7 @@ function App() {
             {/* Cockpit KPIs - uniquement sur la vue "À Traiter" */}
             <Cockpit kpis={kpis} selectedFilter={selectedFilter} onFilterChange={handleFilterChange} />
 
-            {/* Hit List - Leads Qualifiés (Non contactés) */}
+            {/* Hit List - Leads Qualifiés filtrés par score */}
             <HitList
               leads={leads}
               selectedFilter={selectedFilter}
@@ -518,6 +529,38 @@ function App() {
               onOpenConversationModal={setSelectedLeadForConversation}
               agency={currentUser?.agency}
             />
+          </>
+        ) : currentView === 'pre_qualification' ? (
+          <>
+            {/* En-tête pour la vue Pré-qualification IA */}
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">{viewInfo.title}</h2>
+              <p className="text-gray-600 dark:text-gray-400">{viewInfo.description}</p>
+            </div>
+
+            {/* Liste des leads en pré-qualification */}
+            {filteredLeads.length > 0 ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                {filteredLeads.map(lead => (
+                  <LeadCard
+                    key={lead.id}
+                    lead={lead}
+                    currentUser={currentUser}
+                    onLeadUpdate={handleLeadUpdate}
+                    onOpenInfoModal={setSelectedLeadForInfo}
+                    onOpenConversationModal={setSelectedLeadForConversation}
+                    showLastMessage={true}
+                    agency={currentUser?.agency}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 bg-gray-50 dark:bg-dark-card rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-700">
+                <p className="text-gray-600 dark:text-gray-400">
+                  Aucun lead en pré-qualification IA pour le moment
+                </p>
+              </div>
+            )}
           </>
         ) : currentView === 'manager' ? (
           <>
@@ -585,7 +628,7 @@ function App() {
                         onLeadUpdate={handleLeadUpdate}
                         onOpenInfoModal={setSelectedLeadForInfo}
                         onOpenConversationModal={setSelectedLeadForConversation}
-                        showLastMessage={currentView === 'en_cours'}
+                        showLastMessage={currentView === 'en_decouverte'}
                         agency={currentUser?.agency}
                       />
                     ))}

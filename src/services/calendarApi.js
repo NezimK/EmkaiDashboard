@@ -182,3 +182,192 @@ export async function deleteGoogleCalendarEvent(userId, eventId) {
     throw error;
   }
 }
+
+// ============================================================
+// OUTLOOK CALENDAR
+// ============================================================
+
+/**
+ * Obtenir l'URL d'authentification Outlook OAuth2
+ *
+ * @async
+ * @param {string} userId - Identifiant unique de l'utilisateur
+ * @param {string} userEmail - Email de l'utilisateur
+ * @param {string} agency - Identifiant de l'agence
+ * @returns {Promise<string>} URL d'autorisation Microsoft OAuth
+ * @throws {Error} Si la requête échoue
+ */
+export async function getOutlookAuthUrl(userId, userEmail, agency) {
+  try {
+    const response = await fetch(`${API_URL}/api/auth/outlook/url`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId, userEmail, agency }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to get Outlook auth URL');
+    }
+
+    const data = await response.json();
+    return data.authUrl;
+  } catch (error) {
+    console.error('Error getting Outlook auth URL:', error);
+    throw error;
+  }
+}
+
+/**
+ * Vérifier si Outlook Calendar est connecté pour un utilisateur
+ *
+ * @async
+ * @param {string} userId - Identifiant unique de l'utilisateur
+ * @returns {Promise<boolean>} true si connecté, false sinon
+ */
+export async function checkOutlookCalendarStatus(userId) {
+  try {
+    const response = await fetch(`${API_URL}/api/auth/outlook/status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to check Outlook status');
+    }
+
+    const data = await response.json();
+    return data.connected;
+  } catch (error) {
+    console.error('Error checking Outlook calendar status:', error);
+    return false;
+  }
+}
+
+/**
+ * Déconnecter Outlook Calendar pour un utilisateur
+ *
+ * @async
+ * @param {string} userId - Identifiant unique de l'utilisateur
+ * @returns {Promise<boolean>} true si la déconnexion réussit
+ * @throws {Error} Si la déconnexion échoue
+ */
+export async function disconnectOutlookCalendar(userId) {
+  try {
+    const response = await fetch(`${API_URL}/api/auth/outlook/disconnect`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to disconnect Outlook');
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error disconnecting Outlook calendar:', error);
+    throw error;
+  }
+}
+
+/**
+ * Créer un événement dans Outlook Calendar
+ *
+ * @async
+ * @param {string} userId - Identifiant unique de l'utilisateur
+ * @param {Object} eventDetails - Détails de l'événement
+ * @returns {Promise<Object>} Objet contenant eventId et eventLink
+ * @throws {Error} Si la création échoue
+ */
+export async function createOutlookCalendarEvent(userId, eventDetails) {
+  try {
+    const response = await fetch(`${API_URL}/api/calendar/outlook/event`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId, eventDetails }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to create Outlook event');
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error creating Outlook calendar event:', error);
+    throw error;
+  }
+}
+
+/**
+ * Supprimer un événement de Outlook Calendar
+ *
+ * @async
+ * @param {string} userId - Identifiant unique de l'utilisateur
+ * @param {string} eventId - Identifiant de l'événement Outlook
+ * @returns {Promise<boolean>} true si la suppression réussit
+ * @throws {Error} Si la suppression échoue
+ */
+export async function deleteOutlookCalendarEvent(userId, eventId) {
+  try {
+    const response = await fetch(`${API_URL}/api/calendar/outlook/event/delete`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId, eventId }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to delete Outlook event');
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error deleting Outlook calendar event:', error);
+    throw error;
+  }
+}
+
+// ============================================================
+// UNIFIED STATUS
+// ============================================================
+
+/**
+ * Vérifier le statut de tous les calendriers connectés
+ *
+ * @async
+ * @param {string} userId - Identifiant unique de l'utilisateur
+ * @returns {Promise<Object>} { google: boolean, outlook: boolean }
+ */
+export async function checkAllCalendarStatus(userId) {
+  try {
+    const response = await fetch(`${API_URL}/api/auth/calendar/status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to check calendar status');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error checking all calendar status:', error);
+    return { google: false, outlook: false };
+  }
+}

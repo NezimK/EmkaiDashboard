@@ -212,16 +212,15 @@ async function parseLeadFromAirtable(record, token, baseId) {
   }
 
   // Mapper le statut Airtable vers le statut de l'app
-  // Si le champ Statut est vide/undefined, le lead est considéré comme "EN_COURS"
-  let statut = fields.Statut || 'EN_COURS';
+  // Si le champ Statut est vide/undefined, le lead est considéré comme "PRE_QUALIFICATION"
+  let statut = fields.Statut || 'PRE_QUALIFICATION';
 
   // Normaliser les statuts de différentes variantes vers le format uniforme de l'app
   const statusMapping = {
     'Qualifié': 'QUALIFIE',
-    'En-cours': 'EN_COURS',
-    'En_cours': 'EN_COURS',
-    'En_Cours': 'EN_COURS',
-    'EN_COURS': 'EN_COURS',
+    'New': 'PRE_QUALIFICATION',
+    'In_Progress': 'PRE_QUALIFICATION',
+    'PRE_QUALIFICATION': 'PRE_QUALIFICATION',
     'En Découverte': 'EN_DECOUVERTE',
     'En découverte': 'EN_DECOUVERTE',
     'EN_DECOUVERTE': 'EN_DECOUVERTE',

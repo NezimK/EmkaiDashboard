@@ -2,7 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, Calendar, Check, X, LogOut, Mail, Lock, Edit2 } from 'lucide-react';
 import Toast from './Toast';
 import { updateUserEmail, updateUserPassword } from '../data/users';
-import { getGoogleAuthUrl, checkGoogleCalendarStatus, disconnectGoogleCalendar } from '../services/calendarApi';
+import {
+  getGoogleAuthUrl,
+  checkGoogleCalendarStatus,
+  disconnectGoogleCalendar,
+  getOutlookAuthUrl,
+  checkOutlookCalendarStatus,
+  disconnectOutlookCalendar,
+  checkAllCalendarStatus
+} from '../services/calendarApi';
 
 const Settings = ({ currentUser, agency, onLogout, onUserUpdate }) => {
   const [connectedCalendar, setConnectedCalendar] = useState(null);
@@ -20,13 +28,15 @@ const Settings = ({ currentUser, agency, onLogout, onUserUpdate }) => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
-  // Vérifier le statut de connexion Google Calendar
+  // Vérifier le statut de connexion des calendriers
   useEffect(() => {
     const checkConnectionStatus = async () => {
       try {
-        const isConnected = await checkGoogleCalendarStatus(currentUser.id);
-        if (isConnected) {
+        const status = await checkAllCalendarStatus(currentUser.id);
+        if (status.google) {
           setConnectedCalendar('google');
+        } else if (status.outlook) {
+          setConnectedCalendar('outlook');
         } else {
           setConnectedCalendar(null);
         }
@@ -56,10 +66,10 @@ const Settings = ({ currentUser, agency, onLogout, onUserUpdate }) => {
   ];
 
   const handleConnectCalendar = async (calendarId) => {
-    if (calendarId === 'google') {
+    const openAuthPopup = async (getAuthUrl, checkStatus, calendarName) => {
       try {
-        // Obtenir l'URL d'autorisation Google
-        const authUrl = await getGoogleAuthUrl(currentUser.id, currentUser.email, agency);
+        // Obtenir l'URL d'autorisation
+        const authUrl = await getAuthUrl(currentUser.id, currentUser.email, agency);
 
         // Ouvrir la fenêtre popup d'autorisation
         const width = 600;
@@ -69,7 +79,7 @@ const Settings = ({ currentUser, agency, onLogout, onUserUpdate }) => {
 
         const popup = window.open(
           authUrl,
-          'Google Calendar Authorization',
+          `${calendarName} Authorization`,
           `width=${width},height=${height},left=${left},top=${top}`
         );
 
@@ -79,12 +89,12 @@ const Settings = ({ currentUser, agency, onLogout, onUserUpdate }) => {
             clearInterval(checkPopup);
 
             // Vérifier si la connexion a réussi
-            const isConnected = await checkGoogleCalendarStatus(currentUser.id);
+            const isConnected = await checkStatus(currentUser.id);
             if (isConnected) {
-              setConnectedCalendar('google');
+              setConnectedCalendar(calendarId);
               setToast({
                 type: 'success',
-                message: 'Google Calendar connecté avec succès'
+                message: `${calendarName} connecté avec succès`
               });
             }
           }
@@ -93,43 +103,39 @@ const Settings = ({ currentUser, agency, onLogout, onUserUpdate }) => {
         console.error('Erreur lors de la connexion:', error);
         setToast({
           type: 'error',
-          message: 'Erreur lors de la connexion à Google Calendar'
+          message: `Erreur lors de la connexion à ${calendarName}`
         });
       }
+    };
+
+    if (calendarId === 'google') {
+      await openAuthPopup(getGoogleAuthUrl, checkGoogleCalendarStatus, 'Google Calendar');
     } else if (calendarId === 'outlook') {
-      // Pour Outlook, garder l'ancien comportement (export simple)
-      sessionStorage.setItem(`calendar_${agency}_${currentUser.email}`, calendarId);
-      setConnectedCalendar(calendarId);
-      setToast({
-        type: 'success',
-        message: 'Outlook Calendar sélectionné'
-      });
+      await openAuthPopup(getOutlookAuthUrl, checkOutlookCalendarStatus, 'Outlook Calendar');
     }
   };
 
   const handleDisconnectCalendar = async () => {
-    if (connectedCalendar === 'google') {
-      try {
+    try {
+      if (connectedCalendar === 'google') {
         await disconnectGoogleCalendar(currentUser.id);
-        setConnectedCalendar(null);
         setToast({
           type: 'success',
           message: 'Google Calendar déconnecté'
         });
-      } catch (error) {
-        console.error('Erreur lors de la déconnexion:', error);
+      } else if (connectedCalendar === 'outlook') {
+        await disconnectOutlookCalendar(currentUser.id);
         setToast({
-          type: 'error',
-          message: 'Erreur lors de la déconnexion'
+          type: 'success',
+          message: 'Outlook Calendar déconnecté'
         });
       }
-    } else {
-      // Pour Outlook
-      sessionStorage.removeItem(`calendar_${agency}_${currentUser.email}`);
       setConnectedCalendar(null);
+    } catch (error) {
+      console.error('Erreur lors de la déconnexion:', error);
       setToast({
-        type: 'success',
-        message: 'Calendrier déconnecté'
+        type: 'error',
+        message: 'Erreur lors de la déconnexion'
       });
     }
   };

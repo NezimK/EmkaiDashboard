@@ -5,39 +5,31 @@ import KPICard from './KPICard';
 const Cockpit = ({ kpis, selectedFilter, onFilterChange }) => {
   return (
     <section className="mb-8">
-      {/* Cards par température */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* Cards par température - Leads qualifiés uniquement */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <KPICard
           icon={Flame}
-          title="À Traiter d'Urgence"
-          value={kpis.leadsChauds}
+          title="Acquéreurs prêts"
+          value={kpis.leadsHot}
           highlighted={selectedFilter === "CHAUD"}
           onClick={() => onFilterChange("CHAUD")}
           isActive={selectedFilter === "CHAUD"}
         />
         <KPICard
           icon={Zap}
-          title="Projets à Suivre"
-          value={kpis.leadsTiedes}
+          title="Projet en maturation"
+          value={kpis.leadsWarm}
           highlighted={selectedFilter === "TIEDE"}
           onClick={() => onFilterChange("TIEDE")}
           isActive={selectedFilter === "TIEDE"}
         />
         <KPICard
           icon={Snowflake}
-          title="Prospects Froids"
-          value={kpis.leadsFroids}
+          title="Demande exploratoire"
+          value={kpis.leadsCold}
           highlighted={selectedFilter === "FROID"}
           onClick={() => onFilterChange("FROID")}
           isActive={selectedFilter === "FROID"}
-        />
-        <KPICard
-          icon={Clock}
-          title="En cours..."
-          value={kpis.leadsEnCours}
-          highlighted={selectedFilter === "EN_COURS"}
-          onClick={() => onFilterChange("EN_COURS")}
-          isActive={selectedFilter === "EN_COURS"}
         />
       </div>
     </section>

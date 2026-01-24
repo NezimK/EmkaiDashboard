@@ -128,10 +128,10 @@ const KpiStats = ({ leads }) => {
           </p>
         </div>
 
-        {/* Chauds */}
+        {/* HOT */}
         <div className="bg-white dark:bg-dark-card rounded-xl border border-gray-200 dark:border-gray-800 p-6 hover:shadow-lg dark:hover:shadow-red-500/10 transition-shadow">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Chauds</span>
+            <span className="text-sm font-medium text-gray-600 dark:text-gray-400">HOT</span>
             <div className="w-3 h-3 rounded-full bg-red-500 dark:bg-red-400 shadow-md dark:shadow-red-500/50"></div>
           </div>
           <p className="text-3xl font-bold text-gray-900 dark:text-white">
@@ -142,10 +142,10 @@ const KpiStats = ({ leads }) => {
           </p>
         </div>
 
-        {/* Tièdes */}
+        {/* WARM */}
         <div className="bg-white dark:bg-dark-card rounded-xl border border-gray-200 dark:border-gray-800 p-6 hover:shadow-lg dark:hover:shadow-orange-500/10 transition-shadow">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Tièdes</span>
+            <span className="text-sm font-medium text-gray-600 dark:text-gray-400">WARM</span>
             <div className="w-3 h-3 rounded-full bg-orange-500 dark:bg-orange-400 shadow-md dark:shadow-orange-500/50"></div>
           </div>
           <p className="text-3xl font-bold text-gray-900 dark:text-white">
@@ -156,10 +156,10 @@ const KpiStats = ({ leads }) => {
           </p>
         </div>
 
-        {/* Froids */}
+        {/* COLD */}
         <div className="bg-white dark:bg-dark-card rounded-xl border border-gray-200 dark:border-gray-800 p-6 hover:shadow-lg dark:hover:shadow-blue-500/10 transition-shadow">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Froids</span>
+            <span className="text-sm font-medium text-gray-600 dark:text-gray-400">COLD</span>
             <div className="w-3 h-3 rounded-full bg-blue-500 dark:bg-blue-400 shadow-md dark:shadow-blue-500/50"></div>
           </div>
           <p className="text-3xl font-bold text-gray-900 dark:text-white">
@@ -192,13 +192,13 @@ const KpiStats = ({ leads }) => {
                   Total
                 </th>
                 <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Chauds
+                  HOT
                 </th>
                 <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Tièdes
+                  WARM
                 </th>
                 <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Froids
+                  COLD
                 </th>
                 <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   % du Total

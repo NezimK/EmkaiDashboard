@@ -1,16 +1,22 @@
 import React from 'react';
-import { Home, Users, Calendar, RotateCcw, Archive, Shield, Settings, BarChart3 } from 'lucide-react';
+import { Bot, Users, Calendar, RotateCcw, Archive, Shield, Settings, BarChart3, FolderOpen } from 'lucide-react';
 
 const Sidebar = ({ currentView, onNavigate, currentUser }) => {
   const navigationItems = [
     {
-      id: 'a_traiter',
-      label: 'À Traiter',
-      icon: Home,
+      id: 'pre_qualification',
+      label: 'Pré-qualification IA',
+      icon: Bot,
       color: 'text-accent'
     },
     {
-      id: 'en_cours',
+      id: 'a_traiter',
+      label: 'Dossiers à traiter',
+      icon: FolderOpen,
+      color: 'text-accent'
+    },
+    {
+      id: 'en_decouverte',
       label: 'En Découverte',
       icon: Users,
       color: 'text-accent'
@@ -23,7 +29,7 @@ const Sidebar = ({ currentView, onNavigate, currentUser }) => {
     },
     {
       id: 'relance',
-      label: 'Relance',
+      label: 'Relances & suivis',
       icon: RotateCcw,
       color: 'text-accent'
     },
