@@ -801,6 +801,53 @@ export function unsubscribeFromLeads(subscription) {
 }
 
 // ============================================================================
+// PASSWORD RESET
+// ============================================================================
+
+/**
+ * Envoie un email de réinitialisation de mot de passe via le backend
+ * @param {string} email - L'email de l'utilisateur
+ * @returns {Promise<Object>} Résultat de l'opération
+ */
+export async function resetPassword(email) {
+  if (!email) {
+    throw new Error("L'email est requis pour réinitialiser le mot de passe");
+  }
+
+  try {
+    console.log('🔑 Sending password reset email to:', email);
+
+    // Utiliser le proxy Vite en dev (/api/auth -> localhost:3000)
+    // En production, utiliser l'URL absolue du backend
+    const isDev = import.meta.env.DEV;
+    const apiUrl = isDev
+      ? '/api/auth/forgot-password'
+      : `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'}/api/auth/forgot-password`;
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('❌ Password reset error:', data.error);
+      throw new Error(data.error || 'Erreur lors de l\'envoi de l\'email');
+    }
+
+    console.log('✅ Password reset email sent successfully');
+    return { success: true, message: data.message };
+  } catch (error) {
+    console.error('❌ Error sending password reset email:', error);
+    throw error;
+  }
+}
+
+// ============================================================================
 // BACKWARD COMPATIBILITY ALIASES
 // Ces fonctions maintiennent la compatibilité avec l'ancien code
 // qui utilisait 'agency' au lieu de 'clientId'

@@ -4,14 +4,16 @@
  *
  * @description
  * Page de login avec authentification par email/mot de passe.
+ * Inclut une fonctionnalité de récupération de mot de passe.
  * Affiche les comptes de démonstration pour les deux agences.
  *
  * @author IMMO Copilot Team
- * @version 1.0.0
+ * @version 1.1.0
  */
 
 import React, { useState, useEffect } from 'react';
-import { Lock, Mail, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { Lock, Mail, AlertCircle, Eye, EyeOff, ArrowLeft, CheckCircle } from 'lucide-react';
+import { resetPassword } from '../services/supabase';
 
 /**
  * Composant de page de connexion
@@ -32,6 +34,13 @@ const Login = ({ onLogin, error: propError }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+
+  // États pour le mot de passe oublié
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
+  const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
+  const [forgotPasswordSuccess, setForgotPasswordSuccess] = useState(false);
+  const [forgotPasswordError, setForgotPasswordError] = useState('');
 
   // ============================================================
   // EFFECTS
@@ -88,6 +97,43 @@ const Login = ({ onLogin, error: propError }) => {
       onLogin(email, password, rememberMe);
       setIsLoading(false);
     }, 800);
+  };
+
+  /**
+   * Gère la soumission du formulaire de mot de passe oublié
+   */
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setForgotPasswordLoading(true);
+    setForgotPasswordError('');
+
+    try {
+      await resetPassword(forgotPasswordEmail);
+      setForgotPasswordSuccess(true);
+    } catch (error) {
+      setForgotPasswordError(error.message || 'Une erreur est survenue');
+    } finally {
+      setForgotPasswordLoading(false);
+    }
+  };
+
+  /**
+   * Ouvre le formulaire de mot de passe oublié
+   */
+  const openForgotPassword = () => {
+    setForgotPasswordEmail(email); // Pré-remplir avec l'email de connexion
+    setForgotPasswordError('');
+    setForgotPasswordSuccess(false);
+    setShowForgotPassword(true);
+  };
+
+  /**
+   * Ferme le formulaire de mot de passe oublié
+   */
+  const closeForgotPassword = () => {
+    setShowForgotPassword(false);
+    setForgotPasswordError('');
+    setForgotPasswordSuccess(false);
   };
 
   // ============================================================
@@ -182,6 +228,13 @@ const Login = ({ onLogin, error: propError }) => {
                   Se souvenir de moi
                 </span>
               </label>
+              <button
+                type="button"
+                onClick={openForgotPassword}
+                className="text-sm text-accent hover:text-accent-dark transition-colors"
+              >
+                Mot de passe oublié ?
+              </button>
             </div>
 
             {/* Error Message */}
@@ -268,6 +321,108 @@ const Login = ({ onLogin, error: propError }) => {
           © 2025 IMMO Copilot - Tous droits réservés
         </p>
       </div>
+
+      {/* ==================== MODAL MOT DE PASSE OUBLIÉ ==================== */}
+      {showForgotPassword && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+          <div className="bg-dark-card border border-gray-800 rounded-2xl p-8 shadow-2xl w-full max-w-md relative animate-in fade-in zoom-in duration-200">
+            {/* Bouton retour */}
+            <button
+              onClick={closeForgotPassword}
+              className="absolute top-4 left-4 text-gray-400 hover:text-white transition-colors flex items-center gap-2"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span className="text-sm">Retour</span>
+            </button>
+
+            {/* Contenu */}
+            <div className="mt-8">
+              {forgotPasswordSuccess ? (
+                // État de succès
+                <div className="text-center">
+                  <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle className="w-8 h-8 text-green-400" />
+                  </div>
+                  <h2 className="text-xl font-bold text-white mb-2">Email envoyé !</h2>
+                  <p className="text-gray-400 mb-6">
+                    Un email de réinitialisation a été envoyé à{' '}
+                    <span className="text-accent font-medium">{forgotPasswordEmail}</span>.
+                    <br />
+                    Vérifiez votre boîte de réception et suivez les instructions.
+                  </p>
+                  <button
+                    onClick={closeForgotPassword}
+                    className="w-full py-3 px-4 rounded-lg font-semibold text-black bg-gradient-to-r from-accent to-accent-dark hover:from-accent-dark hover:to-accent transition-all duration-200 transform hover:scale-[1.02]"
+                  >
+                    Retour à la connexion
+                  </button>
+                </div>
+              ) : (
+                // Formulaire de réinitialisation
+                <>
+                  <div className="text-center mb-6">
+                    <div className="w-16 h-16 bg-accent/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Mail className="w-8 h-8 text-accent" />
+                    </div>
+                    <h2 className="text-xl font-bold text-white mb-2">Mot de passe oublié ?</h2>
+                    <p className="text-gray-400 text-sm">
+                      Entrez votre adresse email et nous vous enverrons un lien pour réinitialiser votre mot de passe.
+                    </p>
+                  </div>
+
+                  <form onSubmit={handleForgotPassword} className="space-y-4">
+                    {/* Email Input */}
+                    <div>
+                      <label htmlFor="forgotEmail" className="block text-sm font-medium text-gray-300 mb-2">
+                        Email
+                      </label>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <Mail className="h-5 w-5 text-gray-500" />
+                        </div>
+                        <input
+                          id="forgotEmail"
+                          type="email"
+                          value={forgotPasswordEmail}
+                          onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                          className="block w-full pl-10 pr-3 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
+                          placeholder="votre@email.com"
+                          required
+                          autoFocus
+                        />
+                      </div>
+                    </div>
+
+                    {/* Error Message */}
+                    {forgotPasswordError && (
+                      <div className="flex items-center space-x-2 p-3 bg-red-900/20 border border-red-800 rounded-lg">
+                        <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+                        <span className="text-sm text-red-400">{forgotPasswordError}</span>
+                      </div>
+                    )}
+
+                    {/* Submit Button */}
+                    <button
+                      type="submit"
+                      disabled={forgotPasswordLoading}
+                      className={`
+                        w-full py-3 px-4 rounded-lg font-semibold text-black
+                        bg-gradient-to-r from-accent to-accent-dark
+                        hover:from-accent-dark hover:to-accent
+                        transition-all duration-200 transform
+                        ${forgotPasswordLoading ? 'opacity-70 cursor-not-allowed' : 'hover:scale-[1.02]'}
+                        focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-bg
+                      `}
+                    >
+                      {forgotPasswordLoading ? 'Envoi en cours...' : 'Envoyer le lien'}
+                    </button>
+                  </form>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

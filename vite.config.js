@@ -12,6 +12,11 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api\/n8n/, ''),
         secure: true,
       },
+      // Proxy pour saas-backend auth API - contourne CORS en développement
+      '/api/auth': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
     },
   },
 })

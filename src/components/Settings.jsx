@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, Calendar, Check, X, LogOut, Mail, Lock, Edit2 } from 'lucide-react';
 import Toast from './Toast';
-import { updateUserEmail, updateUserPassword } from '../data/users';
+import { authApi } from '../services/authApi';
 import {
   getGoogleAuthUrl,
   checkGoogleCalendarStatus,
@@ -140,65 +140,15 @@ const Settings = ({ currentUser, agency, onLogout, onUserUpdate }) => {
     }
   };
 
-  // Gérer la mise à jour de l'email
+  // Gérer la mise à jour de l'email (désactivé - nécessite implémentation backend)
   const handleUpdateEmail = async (e) => {
     e.preventDefault();
-
-    if (!newEmail || newEmail === currentUser.email) {
-      setToast({
-        type: 'error',
-        message: 'Veuillez entrer un nouvel email différent'
-      });
-      return;
-    }
-
-    // Validation email
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(newEmail)) {
-      setToast({
-        type: 'error',
-        message: 'Email invalide'
-      });
-      return;
-    }
-
-    setIsUpdatingEmail(true);
-
-    try {
-      const result = updateUserEmail(currentUser.id, newEmail);
-
-      if (result.success) {
-        // Mettre à jour l'utilisateur dans sessionStorage
-        const updatedUser = { ...currentUser, email: newEmail };
-        sessionStorage.setItem('emkai_user', JSON.stringify(updatedUser));
-
-        // Notifier le parent si la fonction existe
-        if (onUserUpdate) {
-          onUserUpdate(updatedUser);
-        }
-
-        setToast({
-          type: 'success',
-          message: 'Email modifié avec succès'
-        });
-
-        setIsEditingEmail(false);
-        setNewEmail('');
-      } else {
-        setToast({
-          type: 'error',
-          message: result.error
-        });
-      }
-    } catch (error) {
-      console.error('❌ Erreur lors de la modification de l\'email:', error);
-      setToast({
-        type: 'error',
-        message: 'Erreur lors de la modification de l\'email'
-      });
-    } finally {
-      setIsUpdatingEmail(false);
-    }
+    setToast({
+      type: 'error',
+      message: 'La modification d\'email n\'est pas encore disponible. Contactez le support.'
+    });
+    setIsEditingEmail(false);
+    setNewEmail('');
   };
 
   // Gérer la mise à jour du mot de passe
@@ -221,10 +171,10 @@ const Settings = ({ currentUser, agency, onLogout, onUserUpdate }) => {
       return;
     }
 
-    if (newPassword.length < 6) {
+    if (newPassword.length < 8) {
       setToast({
         type: 'error',
-        message: 'Le mot de passe doit contenir au moins 6 caractères'
+        message: 'Le mot de passe doit contenir au moins 8 caractères'
       });
       return;
     }
@@ -232,29 +182,22 @@ const Settings = ({ currentUser, agency, onLogout, onUserUpdate }) => {
     setIsUpdatingPassword(true);
 
     try {
-      const result = updateUserPassword(currentUser.id, currentPassword, newPassword);
+      await authApi.changePassword(currentPassword, newPassword);
 
-      if (result.success) {
-        setToast({
-          type: 'success',
-          message: 'Mot de passe modifié avec succès'
-        });
+      setToast({
+        type: 'success',
+        message: 'Mot de passe modifié avec succès'
+      });
 
-        setIsEditingPassword(false);
-        setCurrentPassword('');
-        setNewPassword('');
-        setConfirmPassword('');
-      } else {
-        setToast({
-          type: 'error',
-          message: result.error
-        });
-      }
+      setIsEditingPassword(false);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
     } catch (error) {
       console.error('❌ Erreur lors de la modification du mot de passe:', error);
       setToast({
         type: 'error',
-        message: 'Erreur lors de la modification du mot de passe'
+        message: error.message || 'Erreur lors de la modification du mot de passe'
       });
     } finally {
       setIsUpdatingPassword(false);
