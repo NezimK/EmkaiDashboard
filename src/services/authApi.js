@@ -15,8 +15,11 @@ class AuthApi {
 
   /**
    * Connexion avec email et mot de passe
+   * @param {string} email
+   * @param {string} password
+   * @param {boolean} rememberMe - Si true, persiste dans localStorage, sinon sessionStorage
    */
-  async login(email, password) {
+  async login(email, password, rememberMe = false) {
     const response = await fetch(`${API_BASE}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -29,24 +32,35 @@ class AuthApi {
       throw new Error(data.error || 'Erreur de connexion');
     }
 
-    this.setTokens(data.accessToken, data.refreshToken, data.expiresIn);
+    this.setTokens(data.accessToken, data.refreshToken, data.expiresIn, rememberMe);
     return data.user;
   }
 
   /**
-   * Stocke les tokens en mémoire et localStorage
+   * Stocke les tokens en mémoire et dans le storage approprié
+   * @param {boolean} rememberMe - Si true, utilise localStorage, sinon sessionStorage
    */
-  setTokens(accessToken, refreshToken, expiresIn) {
+  setTokens(accessToken, refreshToken, expiresIn, rememberMe = false) {
     this.accessToken = accessToken;
     this.refreshToken = refreshToken;
     this.tokenExpiresAt = Date.now() + (expiresIn * 1000);
 
-    // Persister pour restauration de session
-    localStorage.setItem('emkai_tokens', JSON.stringify({
+    const tokenData = JSON.stringify({
       accessToken,
       refreshToken,
       tokenExpiresAt: this.tokenExpiresAt
-    }));
+    });
+
+    // Nettoyer les deux storages d'abord
+    localStorage.removeItem('emkai_tokens');
+    sessionStorage.removeItem('emkai_tokens');
+
+    // Stocker selon la préférence "Se souvenir de moi"
+    if (rememberMe) {
+      localStorage.setItem('emkai_tokens', tokenData);
+    } else {
+      sessionStorage.setItem('emkai_tokens', tokenData);
+    }
   }
 
   /**
@@ -130,21 +144,23 @@ class AuthApi {
   }
 
   /**
-   * Efface tous les tokens
+   * Efface tous les tokens (mémoire + storages)
    */
   clearTokens() {
     this.accessToken = null;
     this.refreshToken = null;
     this.tokenExpiresAt = null;
     localStorage.removeItem('emkai_tokens');
+    sessionStorage.removeItem('emkai_tokens');
     sessionStorage.removeItem('emkai_user');
   }
 
   /**
-   * Charge les tokens depuis localStorage
+   * Charge les tokens depuis localStorage ou sessionStorage
+   * Vérifie d'abord localStorage (session persistante), puis sessionStorage
    */
   loadStoredTokens() {
-    const stored = localStorage.getItem('emkai_tokens');
+    const stored = localStorage.getItem('emkai_tokens') || sessionStorage.getItem('emkai_tokens');
     if (stored) {
       try {
         const { accessToken, refreshToken, tokenExpiresAt } = JSON.parse(stored);
@@ -155,6 +171,7 @@ class AuthApi {
       } catch (error) {
         console.warn('Erreur chargement tokens:', error);
         localStorage.removeItem('emkai_tokens');
+        sessionStorage.removeItem('emkai_tokens');
       }
     }
     return false;

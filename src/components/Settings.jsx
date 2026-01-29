@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Calendar, Check, X, LogOut, Mail, Lock, Edit2 } from 'lucide-react';
+import { Settings as SettingsIcon, Calendar, Check, X, LogOut, Mail, Lock, Edit2, RefreshCw, HelpCircle } from 'lucide-react';
 import Toast from './Toast';
-import { authApi } from '../services/authApi';
+import { authApi, API_BASE_URL } from '../services/authApi';
 import {
   getGoogleAuthUrl,
   checkGoogleCalendarStatus,
@@ -12,7 +12,7 @@ import {
   checkAllCalendarStatus
 } from '../services/calendarApi';
 
-const Settings = ({ currentUser, agency, onLogout, onUserUpdate }) => {
+const Settings = ({ currentUser, agency, onLogout, onUserUpdate, onRestartOnboarding }) => {
   const [connectedCalendar, setConnectedCalendar] = useState(null);
   const [toast, setToast] = useState(null);
 
@@ -204,6 +204,44 @@ const Settings = ({ currentUser, agency, onLogout, onUserUpdate }) => {
     }
   };
 
+  // État et gestion de la synchronisation des biens
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState(null);
+
+  const handleSyncProperties = async () => {
+    setIsSyncing(true);
+    try {
+      // Utiliser l'URL de base configurée dans authApi
+      // Cela assure la cohérence avec le reste de l'application (dev: 3000, prod: configured url)
+      const response = await fetch(`${API_BASE_URL}/api/sync/netty/${currentUser.tenant_id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setToast({
+          type: 'success',
+          message: 'Synchronisation des biens lancée avec succès'
+        });
+        // On pourrait aussi rafraîchir le statut ici
+      } else {
+        throw new Error(data.error || 'Erreur lors de la synchronisation');
+      }
+    } catch (error) {
+      console.error('Erreur synchronisation:', error);
+      setToast({
+        type: 'error',
+        message: 'Impossible de lancer la synchronisation. Veuillez réessayer.'
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
@@ -341,11 +379,10 @@ const Settings = ({ currentUser, agency, onLogout, onUserUpdate }) => {
           {/* Rôle - Non modifiable */}
           <div className="flex justify-between items-center py-3 border-b border-gray-200 dark:border-gray-700">
             <span className="text-gray-600 dark:text-gray-400">Rôle</span>
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-              currentUser.role === 'manager'
-                ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
-                : 'bg-accent/20 dark:bg-accent/20 text-accent dark:text-accent'
-            }`}>
+            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${currentUser.role === 'manager'
+              ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+              : 'bg-accent/20 dark:bg-accent/20 text-accent dark:text-accent'
+              }`}>
               {currentUser.role}
             </span>
           </div>
@@ -385,11 +422,10 @@ const Settings = ({ currentUser, agency, onLogout, onUserUpdate }) => {
           {calendarOptions.map((calendar) => (
             <div
               key={calendar.id}
-              className={`w-full flex items-center justify-between p-4 rounded-lg border-2 transition-all ${
-                connectedCalendar === calendar.id
-                  ? 'border-accent bg-accent/10 dark:bg-accent/20'
-                  : 'border-gray-200 dark:border-gray-700'
-              }`}
+              className={`w-full flex items-center justify-between p-4 rounded-lg border-2 transition-all ${connectedCalendar === calendar.id
+                ? 'border-accent bg-accent/10 dark:bg-accent/20'
+                : 'border-gray-200 dark:border-gray-700'
+                }`}
             >
               <div className="flex items-center space-x-4">
                 <div className={`w-12 h-12 ${calendar.color} rounded-lg flex items-center justify-center text-white text-2xl`}>
@@ -424,6 +460,58 @@ const Settings = ({ currentUser, agency, onLogout, onUserUpdate }) => {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Synchronisation des biens */}
+      <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+        <div className="flex items-center space-x-3 mb-4">
+          <RefreshCw className="w-6 h-6 text-accent" />
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Synchronisation des biens
+          </h3>
+        </div>
+
+        <p className="text-gray-600 dark:text-gray-400 mb-6 text-sm">
+          Lancez manuellement la récupération de vos biens immobiliers depuis votre logiciel (Netty).
+          Cette opération peut prendre quelques minutes.
+        </p>
+
+        <div className="flex items-center justify-between p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div>
+            <p className="font-medium text-gray-900 dark:text-white">Synchronisation manuelle</p>
+            <p className="text-sm text-gray-500">Mettre à jour la liste de vos biens</p>
+          </div>
+          <button
+            onClick={handleSyncProperties}
+            disabled={isSyncing}
+            className="flex items-center space-x-2 px-4 py-2 bg-accent hover:bg-accent-dark text-black rounded-lg transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span>{isSyncing ? 'Synchronisation...' : 'Synchroniser mes biens'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Aide & Tutoriel */}
+      <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+        <div className="flex items-center space-x-3 mb-4">
+          <HelpCircle className="w-6 h-6 text-accent" />
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Aide
+          </h3>
+        </div>
+
+        <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm">
+          Besoin d'un rappel sur les fonctionnalités du dashboard ?
+        </p>
+
+        <button
+          onClick={onRestartOnboarding}
+          className="flex items-center space-x-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-900 dark:text-white rounded-lg transition-colors"
+        >
+          <HelpCircle className="w-5 h-5" />
+          <span>Revoir le tutoriel</span>
+        </button>
       </div>
 
       {/* Déconnexion */}

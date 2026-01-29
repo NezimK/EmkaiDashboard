@@ -7,25 +7,29 @@ const Sidebar = ({ currentView, onNavigate, currentUser }) => {
       id: 'pre_qualification',
       label: 'Pré-qualification IA',
       icon: Bot,
-      color: 'text-accent'
+      color: 'text-accent',
+      onboardingId: 'nav-prequalification'
     },
     {
       id: 'a_traiter',
       label: 'Dossiers à traiter',
       icon: FolderOpen,
-      color: 'text-accent'
+      color: 'text-accent',
+      onboardingId: 'nav-dossiers'
     },
     {
       id: 'en_decouverte',
       label: 'En Découverte',
       icon: Users,
-      color: 'text-accent'
+      color: 'text-accent',
+      onboardingId: 'nav-decouverte'
     },
     {
       id: 'visites',
       label: 'Visites',
       icon: Calendar,
-      color: 'text-accent'
+      color: 'text-accent',
+      onboardingId: 'nav-visites'
     },
     {
       id: 'relance',
@@ -80,6 +84,7 @@ const Sidebar = ({ currentView, onNavigate, currentUser }) => {
             <button
               key={item.id}
               onClick={() => onNavigate(item.id)}
+              data-onboarding={item.onboardingId}
               className={`
                 w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200
                 ${isActive

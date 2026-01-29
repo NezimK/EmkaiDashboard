@@ -13,8 +13,9 @@ import Login from './components/Login';
 import FilterBar from './components/FilterBar';
 import KpiStats from './components/KpiStats';
 import RelanceView from './components/RelanceView';
+import Onboarding from './components/Onboarding';
 import { fetchLeads, subscribeToLeads, unsubscribeFromLeads } from './services/supabase';
-import { authApi } from './services/authApi';
+import { authApi, API_BASE_URL } from './services/authApi';
 
 function App() {
   const [darkMode, setDarkMode] = useState(true);
@@ -29,6 +30,7 @@ function App() {
   const [currentView, setCurrentView] = useState('a_traiter'); // 'pre_qualification', 'a_traiter', 'en_decouverte', 'visites', 'relance', 'manager', 'settings'
   const [selectedLeadForInfo, setSelectedLeadForInfo] = useState(null); // Lead sélectionné pour la modal Info
   const [selectedLeadForConversation, setSelectedLeadForConversation] = useState(null); // Lead sélectionné pour la modal Conversation
+  const [showOnboarding, setShowOnboarding] = useState(false); // Afficher l'onboarding
 
   // Calculer les KPIs depuis les leads en temps réel
   const getKPIs = () => {
@@ -209,8 +211,8 @@ function App() {
 
   const handleLogin = async (email, password, rememberMe = false) => {
     try {
-      // Authentification via l'API backend
-      const user = await authApi.login(email, password);
+      // Authentification via l'API backend (passe rememberMe pour le stockage des tokens)
+      const user = await authApi.login(email, password, rememberMe);
 
       // Ajouter client_id comme alias de tenant_id pour compatibilité
       const userWithClientId = {
@@ -236,10 +238,35 @@ function App() {
         localStorage.removeItem('emkai_user');
         console.log('✅ Session sauvegardée (session uniquement)');
       }
+
+      // Vérifier si l'onboarding a déjà été complété pour cet utilisateur
+      const onboardingKey = `onboarding_completed_${user.id}`;
+      if (!localStorage.getItem(onboardingKey)) {
+        setShowOnboarding(true);
+      }
     } catch (error) {
       console.error('Erreur de connexion:', error);
       setLoginError(error.message || 'Erreur de connexion');
     }
+  };
+
+  // Handlers pour l'onboarding
+  const handleOnboardingComplete = () => {
+    if (currentUser?.id) {
+      localStorage.setItem(`onboarding_completed_${currentUser.id}`, 'true');
+    }
+    setShowOnboarding(false);
+  };
+
+  const handleOnboardingSkip = () => {
+    if (currentUser?.id) {
+      localStorage.setItem(`onboarding_completed_${currentUser.id}`, 'true');
+    }
+    setShowOnboarding(false);
+  };
+
+  const handleRestartOnboarding = () => {
+    setShowOnboarding(true);
   };
 
   const handleLogout = async () => {
@@ -510,6 +537,7 @@ function App() {
             agency={currentUser?.agency}
             onLogout={handleLogout}
             onUserUpdate={setCurrentUser}
+            onRestartOnboarding={handleRestartOnboarding}
           />
         ) : currentView === 'kpi' ? (
           /* Vue Statistiques KPI */
@@ -666,6 +694,14 @@ function App() {
           agency={currentUser?.agency}
         />
       )}
+
+      {/* Onboarding modal */}
+      <Onboarding
+        isOpen={showOnboarding}
+        onComplete={handleOnboardingComplete}
+        onSkip={handleOnboardingSkip}
+        onNavigate={setCurrentView}
+      />
     </div>
   );
 }

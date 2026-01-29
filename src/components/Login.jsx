@@ -318,7 +318,7 @@ const Login = ({ onLogin, error: propError }) => {
 
         {/* Footer */}
         <p className="text-center text-gray-500 text-sm mt-6">
-          © 2025 IMMO Copilot - Tous droits réservés
+          © 2026 IMMO Copilot - Tous droits réservés
         </p>
       </div>
 
