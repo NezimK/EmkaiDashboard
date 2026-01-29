@@ -1,8 +1,9 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { getAuthUrl, exchangeCodeForTokens, createCalendarEvent, deleteCalendarEvent } from './calendar.js';
-import { getOutlookAuthUrl, exchangeOutlookCodeForTokens, createOutlookCalendarEvent, deleteOutlookCalendarEvent } from './outlookCalendar.js';
+import jwt from 'jsonwebtoken';
+import { getAuthUrl, exchangeCodeForTokens, createCalendarEvent, deleteCalendarEvent, verifySignedState } from './calendar.js';
+import { getOutlookAuthUrl, exchangeOutlookCodeForTokens, createOutlookCalendarEvent, deleteOutlookCalendarEvent, verifyOutlookSignedState } from './outlookCalendar.js';
 import { saveUserTokens, getUserTokens, deleteUserTokens, getConnectedProviders } from './db.js';
 
 dotenv.config();
@@ -10,9 +11,54 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// SÉCURITÉ: Secret JWT pour authentification des requêtes calendar
+const JWT_SECRET = process.env.JWT_SECRET || 'default-jwt-secret-change-in-production';
+
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// =============================================================================
+// SÉCURITÉ: Middleware d'authentification JWT
+// =============================================================================
+
+/**
+ * Middleware pour vérifier le token JWT sur les endpoints protégés
+ */
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // Format: "Bearer <token>"
+
+  if (!token) {
+    return res.status(401).json({ error: 'Token d\'authentification manquant' });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) {
+      console.error('JWT verification failed:', err.message);
+      return res.status(403).json({ error: 'Token invalide ou expiré' });
+    }
+    req.user = user;
+    next();
+  });
+};
+
+/**
+ * Middleware optionnel - vérifie le token si présent, sinon continue
+ */
+const optionalAuth = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (token) {
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+      if (!err) {
+        req.user = user;
+      }
+    });
+  }
+  next();
+};
 
 // Health check
 app.get('/health', (req, res) => {
@@ -46,8 +92,17 @@ app.get('/api/auth/google/callback', async (req, res) => {
       return res.status(400).send('Missing authorization code or state');
     }
 
-    // Decode state to get user info
-    const { userId, userEmail, agency } = JSON.parse(Buffer.from(state, 'base64').toString());
+    // SÉCURITÉ: Vérifier et décoder le state signé (protection CSRF)
+    let userId, userEmail, agency;
+    try {
+      const stateData = verifySignedState(state);
+      userId = stateData.userId;
+      userEmail = stateData.userEmail;
+      agency = stateData.agency;
+    } catch (stateError) {
+      console.error('Invalid OAuth state:', stateError.message);
+      return res.status(400).send('Invalid or expired OAuth state. Please try again.');
+    }
 
     // Exchange code for tokens
     const tokens = await exchangeCodeForTokens(code);
@@ -243,10 +298,12 @@ app.post('/api/auth/google/disconnect', (req, res) => {
   }
 });
 
-// Create calendar event
-app.post('/api/calendar/event', async (req, res) => {
+// Create calendar event - SÉCURITÉ: Protégé par JWT
+app.post('/api/calendar/event', authenticateToken, async (req, res) => {
   try {
-    const { userId, eventDetails } = req.body;
+    const { eventDetails } = req.body;
+    // SÉCURITÉ: Utiliser l'ID du token JWT, pas celui du body
+    const userId = req.user.id || req.user.userId;
 
     if (!userId || !eventDetails) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -261,10 +318,12 @@ app.post('/api/calendar/event', async (req, res) => {
   }
 });
 
-// Delete calendar event
-app.post('/api/calendar/event/delete', async (req, res) => {
+// Delete calendar event - SÉCURITÉ: Protégé par JWT
+app.post('/api/calendar/event/delete', authenticateToken, async (req, res) => {
   try {
-    const { userId, eventId } = req.body;
+    const { eventId } = req.body;
+    // SÉCURITÉ: Utiliser l'ID du token JWT, pas celui du body
+    const userId = req.user.id || req.user.userId;
 
     if (!userId || !eventId) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -310,8 +369,17 @@ app.get('/api/auth/outlook/callback', async (req, res) => {
       return res.status(400).send('Missing authorization code or state');
     }
 
-    // Decode state to get user info
-    const { userId, userEmail, agency } = JSON.parse(Buffer.from(state, 'base64').toString());
+    // SÉCURITÉ: Vérifier et décoder le state signé (protection CSRF)
+    let userId, userEmail, agency;
+    try {
+      const stateData = verifyOutlookSignedState(state);
+      userId = stateData.userId;
+      userEmail = stateData.userEmail;
+      agency = stateData.agency;
+    } catch (stateError) {
+      console.error('Invalid Outlook OAuth state:', stateError.message);
+      return res.status(400).send('Invalid or expired OAuth state. Please try again.');
+    }
 
     // Exchange code for tokens
     const tokens = await exchangeOutlookCodeForTokens(code);
@@ -499,10 +567,12 @@ app.post('/api/auth/outlook/disconnect', (req, res) => {
   }
 });
 
-// Create Outlook calendar event
-app.post('/api/calendar/outlook/event', async (req, res) => {
+// Create Outlook calendar event - SÉCURITÉ: Protégé par JWT
+app.post('/api/calendar/outlook/event', authenticateToken, async (req, res) => {
   try {
-    const { userId, eventDetails } = req.body;
+    const { eventDetails } = req.body;
+    // SÉCURITÉ: Utiliser l'ID du token JWT, pas celui du body
+    const userId = req.user.id || req.user.userId;
 
     if (!userId || !eventDetails) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -517,10 +587,12 @@ app.post('/api/calendar/outlook/event', async (req, res) => {
   }
 });
 
-// Delete Outlook calendar event
-app.post('/api/calendar/outlook/event/delete', async (req, res) => {
+// Delete Outlook calendar event - SÉCURITÉ: Protégé par JWT
+app.post('/api/calendar/outlook/event/delete', authenticateToken, async (req, res) => {
   try {
-    const { userId, eventId } = req.body;
+    const { eventId } = req.body;
+    // SÉCURITÉ: Utiliser l'ID du token JWT, pas celui du body
+    const userId = req.user.id || req.user.userId;
 
     if (!userId || !eventId) {
       return res.status(400).json({ error: 'Missing required fields' });

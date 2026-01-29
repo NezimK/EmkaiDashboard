@@ -1,5 +1,9 @@
 import { google } from 'googleapis';
+import crypto from 'crypto';
 import { getUserTokens, saveUserTokens } from './db.js';
+
+// SÉCURITÉ: Secret pour signer le state OAuth (doit être défini dans .env)
+const STATE_SECRET = process.env.STATE_SECRET || 'default-state-secret-change-me-in-production';
 
 // Create OAuth2 client
 export function getOAuth2Client() {
@@ -10,14 +14,69 @@ export function getOAuth2Client() {
   );
 }
 
+/**
+ * SÉCURITÉ: Crée un state OAuth signé avec HMAC pour prévenir les attaques CSRF
+ * @param {Object} data - Les données à inclure dans le state
+ * @returns {string} Le state encodé et signé en base64
+ */
+export function createSignedState(data) {
+  const payload = JSON.stringify(data);
+  const timestamp = Date.now();
+  const dataWithTimestamp = JSON.stringify({ ...data, timestamp });
+
+  const signature = crypto
+    .createHmac('sha256', STATE_SECRET)
+    .update(dataWithTimestamp)
+    .digest('hex');
+
+  return Buffer.from(JSON.stringify({
+    payload: dataWithTimestamp,
+    signature
+  })).toString('base64');
+}
+
+/**
+ * SÉCURITÉ: Vérifie et décode un state OAuth signé
+ * @param {string} state - Le state encodé en base64
+ * @returns {Object} Les données décodées
+ * @throws {Error} Si la signature est invalide ou le state a expiré
+ */
+export function verifySignedState(state) {
+  try {
+    const decoded = JSON.parse(Buffer.from(state, 'base64').toString());
+
+    const expectedSignature = crypto
+      .createHmac('sha256', STATE_SECRET)
+      .update(decoded.payload)
+      .digest('hex');
+
+    if (expectedSignature !== decoded.signature) {
+      throw new Error('Invalid state signature - possible CSRF attack');
+    }
+
+    const data = JSON.parse(decoded.payload);
+
+    // Vérifier que le state n'a pas expiré (10 minutes max)
+    const MAX_STATE_AGE = 10 * 60 * 1000; // 10 minutes
+    if (Date.now() - data.timestamp > MAX_STATE_AGE) {
+      throw new Error('State expired');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('State verification failed:', error.message);
+    throw new Error('Invalid OAuth state');
+  }
+}
+
 // Get authorization URL
 export function getAuthUrl(userId, userEmail, agency) {
   const oauth2Client = getOAuth2Client();
 
   const scopes = ['https://www.googleapis.com/auth/calendar.events'];
 
-  // Store user info in state parameter
-  const state = Buffer.from(JSON.stringify({ userId, userEmail, agency })).toString('base64');
+  // SÉCURITÉ: Utiliser un state signé au lieu d'un simple base64
+  const state = createSignedState({ userId, userEmail, agency });
 
   return oauth2Client.generateAuthUrl({
     access_type: 'offline',

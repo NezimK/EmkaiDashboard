@@ -1,11 +1,79 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const DB_FILE = path.join(__dirname, 'tokens.json');
+
+// =============================================================================
+// SÉCURITÉ: Chiffrement AES-256 pour les tokens OAuth
+// =============================================================================
+
+// Clé de chiffrement (doit être 32 bytes = 64 caractères hex)
+// IMPORTANT: Définir TOKEN_ENCRYPTION_KEY dans .env en production
+const ENCRYPTION_KEY = process.env.TOKEN_ENCRYPTION_KEY ||
+  '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+const IV_LENGTH = 16;
+
+/**
+ * Chiffre une chaîne avec AES-256-CBC
+ * @param {string} text - Texte à chiffrer
+ * @returns {string} Texte chiffré au format "iv:encrypted" en hex
+ */
+function encrypt(text) {
+  if (!text) return text;
+  try {
+    const iv = crypto.randomBytes(IV_LENGTH);
+    const cipher = crypto.createCipheriv(
+      'aes-256-cbc',
+      Buffer.from(ENCRYPTION_KEY, 'hex'),
+      iv
+    );
+    let encrypted = cipher.update(text, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    return iv.toString('hex') + ':' + encrypted;
+  } catch (error) {
+    console.error('Encryption error:', error.message);
+    return text; // Fallback: retourner le texte non chiffré
+  }
+}
+
+/**
+ * Déchiffre une chaîne chiffrée avec AES-256-CBC
+ * @param {string} text - Texte chiffré au format "iv:encrypted"
+ * @returns {string} Texte déchiffré
+ */
+function decrypt(text) {
+  if (!text || !text.includes(':')) return text;
+  try {
+    const [ivHex, encryptedHex] = text.split(':');
+    const iv = Buffer.from(ivHex, 'hex');
+    const encrypted = Buffer.from(encryptedHex, 'hex');
+    const decipher = crypto.createDecipheriv(
+      'aes-256-cbc',
+      Buffer.from(ENCRYPTION_KEY, 'hex'),
+      iv
+    );
+    let decrypted = decipher.update(encrypted, undefined, 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch (error) {
+    console.error('Decryption error:', error.message);
+    return text; // Fallback: retourner le texte tel quel (peut être non chiffré)
+  }
+}
+
+/**
+ * Vérifie si une chaîne est déjà chiffrée (format iv:encrypted)
+ */
+function isEncrypted(text) {
+  if (!text || typeof text !== 'string') return false;
+  const parts = text.split(':');
+  return parts.length === 2 && parts[0].length === 32 && /^[a-f0-9]+$/i.test(parts[0]);
+}
 
 // Initialize database file if it doesn't exist
 function initDB() {
@@ -27,6 +95,7 @@ function writeDB(data) {
 }
 
 // Save or update user tokens
+// SÉCURITÉ: Les tokens sont chiffrés avant stockage
 // provider: 'google' (default) or 'outlook'
 export function saveUserTokens(userId, userEmail, agency, tokens, provider = 'google') {
   const db = readDB();
@@ -40,10 +109,14 @@ export function saveUserTokens(userId, userEmail, agency, tokens, provider = 'go
     };
   }
 
-  // Store tokens under provider key
+  // SÉCURITÉ: Chiffrer les tokens sensibles avant stockage
+  const encryptedAccessToken = encrypt(tokens.access_token);
+  const encryptedRefreshToken = encrypt(tokens.refresh_token);
+
+  // Store encrypted tokens under provider key
   db.users[userId][provider] = {
-    access_token: tokens.access_token,
-    refresh_token: tokens.refresh_token,
+    access_token: encryptedAccessToken,
+    refresh_token: encryptedRefreshToken,
     expiry_date: tokens.expiry_date,
     account: tokens.account || null, // For Outlook MSAL
     updated_at: Date.now()
@@ -51,8 +124,8 @@ export function saveUserTokens(userId, userEmail, agency, tokens, provider = 'go
 
   // Keep backward compatibility - store at root level for google
   if (provider === 'google') {
-    db.users[userId].access_token = tokens.access_token;
-    db.users[userId].refresh_token = tokens.refresh_token;
+    db.users[userId].access_token = encryptedAccessToken;
+    db.users[userId].refresh_token = encryptedRefreshToken;
     db.users[userId].expiry_date = tokens.expiry_date;
     db.users[userId].updated_at = Date.now();
   }
@@ -62,6 +135,7 @@ export function saveUserTokens(userId, userEmail, agency, tokens, provider = 'go
 }
 
 // Get user tokens
+// SÉCURITÉ: Les tokens sont déchiffrés après lecture
 // provider: 'google' (default) or 'outlook'
 export function getUserTokens(userId, provider = 'google') {
   const db = readDB();
@@ -71,8 +145,11 @@ export function getUserTokens(userId, provider = 'google') {
 
   // Check for provider-specific tokens first
   if (user[provider]) {
+    // SÉCURITÉ: Déchiffrer les tokens avant de les retourner
     return {
       ...user[provider],
+      access_token: decrypt(user[provider].access_token),
+      refresh_token: decrypt(user[provider].refresh_token),
       user_id: user.user_id,
       user_email: user.user_email,
       agency: user.agency,
@@ -81,7 +158,12 @@ export function getUserTokens(userId, provider = 'google') {
 
   // Backward compatibility for google tokens stored at root
   if (provider === 'google' && user.access_token) {
-    return user;
+    // SÉCURITÉ: Déchiffrer les tokens du niveau racine aussi
+    return {
+      ...user,
+      access_token: decrypt(user.access_token),
+      refresh_token: decrypt(user.refresh_token),
+    };
   }
 
   return null;

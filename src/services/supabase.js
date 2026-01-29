@@ -144,11 +144,11 @@ function formatLeadFromDatabase(record, bienDetails = null) {
   const statut = normalizeStatus(record.status);
   const score = normalizeScore(record.score);
 
-  // Debug: afficher le statut et score bruts et normalisés
-  console.log(`🔍 Lead "${nom}" - Statut: "${record.status}" → "${statut}", Score: "${record.score}" → "${score}"`);
-
-  // Debug: afficher property_reference et bienDetails
-  console.log(`🏠 Lead "${nom}" - property_reference: "${record.property_reference}", bienDetails:`, bienDetails);
+  // Debug: afficher le statut et score bruts et normalisés (seulement en dev)
+  if (import.meta.env.DEV) {
+    console.log(`🔍 Lead "${nom}" - Statut: "${record.status}" → "${statut}", Score: "${record.score}" → "${score}"`);
+    console.log(`🏠 Lead "${nom}" - property_reference: "${record.property_reference}", bienDetails:`, bienDetails);
+  }
 
   return {
     id: record.id,
@@ -214,38 +214,29 @@ function formatBienFromDatabase(record) {
 
 /**
  * Récupère les détails d'un bien depuis la table biens
+ * SÉCURITÉ: Toujours filtrer par client_id pour isolation multi-tenant
  * @param {string} propertyReference - La référence du bien
  * @param {string} clientId - L'ID du client/tenant
  * @returns {Promise<Object|null>} Les détails du bien ou null
  */
 async function fetchBienDetails(propertyReference, clientId) {
-  if (!propertyReference) {
-    console.log('🏠 [fetchBienDetails] Pas de property_reference');
+  // SÉCURITÉ: Exiger les deux paramètres
+  if (!propertyReference || !clientId) {
+    if (import.meta.env.DEV) {
+      console.log('🏠 [fetchBienDetails] Paramètres manquants - propertyReference ou clientId');
+    }
     return null;
   }
 
   // Nettoyer la référence (enlever espaces avant/après)
   const cleanRef = propertyReference.trim();
 
-  console.log(`🏠 [fetchBienDetails] Recherche du bien: "${cleanRef}" (length: ${cleanRef.length}) pour client: ${clientId}`);
+  if (import.meta.env.DEV) {
+    console.log(`🏠 [fetchBienDetails] Recherche du bien: "${cleanRef}" pour client: ${clientId}`);
+  }
 
   try {
-    // D'abord, cherchons le bien SANS filtre client_id pour voir s'il existe
-    const { data: debugData } = await supabase
-      .from('biens')
-      .select('id, ref_externe, client_id')
-      .eq('ref_externe', cleanRef)
-      .limit(5);
-
-    console.log(`🔍 [DEBUG] Biens avec ref_externe="${cleanRef}" (sans filtre client_id):`, debugData);
-
-    if (debugData && debugData.length > 0) {
-      console.log(`🔍 [DEBUG] client_id du bien trouvé: "${debugData[0].client_id}"`);
-      console.log(`🔍 [DEBUG] client_id recherché: "${clientId}"`);
-      console.log(`🔍 [DEBUG] Sont-ils égaux?: ${debugData[0].client_id === clientId}`);
-    }
-
-    // Essayer d'abord avec ref_externe
+    // Chercher avec ref_externe - TOUJOURS filtrer par client_id
     let { data, error } = await supabase
       .from('biens')
       .select('*')
@@ -254,13 +245,15 @@ async function fetchBienDetails(propertyReference, clientId) {
       .limit(1);
 
     if (error) {
-      console.warn(`⚠️ Erreur lors de la récupération du bien ${cleanRef}:`, error.message);
+      console.warn(`⚠️ Erreur récupération bien ${cleanRef}:`, error.message);
       return null;
     }
 
-    // Si pas trouvé, essayer avec netty_id
+    // Si pas trouvé avec ref_externe, essayer avec netty_id
     if (!data || data.length === 0) {
-      console.log(`🏠 [fetchBienDetails] Pas trouvé avec ref_externe, essai avec netty_id...`);
+      if (import.meta.env.DEV) {
+        console.log(`🏠 [fetchBienDetails] Pas trouvé avec ref_externe, essai avec netty_id...`);
+      }
       const result = await supabase
         .from('biens')
         .select('*')
@@ -272,35 +265,21 @@ async function fetchBienDetails(propertyReference, clientId) {
       error = result.error;
     }
 
-    console.log(`🏠 [fetchBienDetails] Résultat de la requête:`, data);
-
-    // Prendre le premier résultat s'il existe
+    // Retourner null si aucun bien trouvé (pas de fallback cross-tenant)
     if (!data || data.length === 0) {
-      // Si on a trouvé le bien sans filtre client_id, utiliser celui-là
-      if (debugData && debugData.length > 0) {
-        console.log(`🏠 [fetchBienDetails] Utilisation du bien trouvé sans filtre client_id`);
-        const { data: bienData } = await supabase
-          .from('biens')
-          .select('*')
-          .eq('id', debugData[0].id)
-          .single();
-
-        if (bienData) {
-          const formatted = formatBienFromDatabase(bienData);
-          console.log(`🏠 [fetchBienDetails] Bien formaté (fallback):`, formatted);
-          return formatted;
-        }
+      if (import.meta.env.DEV) {
+        console.log(`🏠 [fetchBienDetails] Aucun bien trouvé pour ref: ${cleanRef} et client: ${clientId}`);
       }
-
-      console.warn(`⚠️ [fetchBienDetails] Aucun bien trouvé pour ref: ${cleanRef}`);
       return null;
     }
 
     const formatted = formatBienFromDatabase(data[0]);
-    console.log(`🏠 [fetchBienDetails] Bien formaté:`, formatted);
+    if (import.meta.env.DEV) {
+      console.log(`🏠 [fetchBienDetails] Bien formaté:`, formatted);
+    }
     return formatted;
   } catch (error) {
-    console.error('❌ Erreur lors de la récupération des détails du bien:', error);
+    console.error('❌ Erreur fetchBienDetails:', error);
     return null;
   }
 }
@@ -433,7 +412,9 @@ export async function updateLead(clientId, leadId, updates) {
  */
 export async function assignLeadToAgent(clientId, leadId, agentName) {
   try {
-    console.log('🔄 Assigning lead:', leadId, 'to agent:', agentName, 'for client:', clientId);
+    if (import.meta.env.DEV) {
+      console.log('🔄 Assigning lead:', leadId, 'to agent:', agentName, 'for client:', clientId);
+    }
 
     const result = await updateLead(clientId, leadId, {
       assigned_agent: agentName,
@@ -441,7 +422,9 @@ export async function assignLeadToAgent(clientId, leadId, agentName) {
       status: 'EN_DECOUVERTE',
     });
 
-    console.log('✅ Lead assigned successfully:', result);
+    if (import.meta.env.DEV) {
+      console.log('✅ Lead assigned successfully:', result);
+    }
     return result;
   } catch (error) {
     console.error('❌ Error assigning lead to agent:', error);
@@ -456,7 +439,9 @@ export async function assignLeadToAgent(clientId, leadId, agentName) {
  */
 export async function unassignLead(clientId, leadId) {
   try {
-    console.log('🔄 Unassigning lead:', leadId, 'for client:', clientId);
+    if (import.meta.env.DEV) {
+      console.log('🔄 Unassigning lead:', leadId, 'for client:', clientId);
+    }
 
     const result = await updateLead(clientId, leadId, {
       assigned_agent: null,
@@ -464,7 +449,9 @@ export async function unassignLead(clientId, leadId) {
       status: 'QUALIFIE',
     });
 
-    console.log('✅ Lead unassigned successfully:', result);
+    if (import.meta.env.DEV) {
+      console.log('✅ Lead unassigned successfully:', result);
+    }
     return result;
   } catch (error) {
     console.error('❌ Error unassigning lead:', error);
@@ -480,7 +467,9 @@ export async function unassignLead(clientId, leadId) {
  */
 export async function updateLeadStatus(clientId, leadId, newStatus) {
   try {
-    console.log('🔄 Updating lead status:', leadId, 'to', newStatus, 'for client:', clientId);
+    if (import.meta.env.DEV) {
+      console.log('🔄 Updating lead status:', leadId, 'to', newStatus, 'for client:', clientId);
+    }
 
     // Normaliser le statut avant de l'envoyer
     const normalizedStatus = normalizeStatus(newStatus);
@@ -489,7 +478,9 @@ export async function updateLeadStatus(clientId, leadId, newStatus) {
       status: normalizedStatus,
     });
 
-    console.log('✅ Lead status updated successfully:', result);
+    if (import.meta.env.DEV) {
+      console.log('✅ Lead status updated successfully:', result);
+    }
     return result;
   } catch (error) {
     console.error('❌ Error updating lead status:', error);
@@ -505,7 +496,9 @@ export async function updateLeadStatus(clientId, leadId, newStatus) {
  */
 export async function markMessagesAsRead(clientId, leadId, conversation) {
   try {
-    console.log('🔄 Marking messages as read for lead:', leadId, 'for client:', clientId);
+    if (import.meta.env.DEV) {
+      console.log('🔄 Marking messages as read for lead:', leadId, 'for client:', clientId);
+    }
 
     // Marquer tous les messages comme lus
     const updatedConversation = conversation.map(msg => ({
@@ -536,7 +529,9 @@ export async function markMessagesAsRead(clientId, leadId, conversation) {
       conversation_json: n8nFormat,
     });
 
-    console.log('✅ Messages marked as read successfully');
+    if (import.meta.env.DEV) {
+      console.log('✅ Messages marked as read successfully');
+    }
     return result;
   } catch (error) {
     console.error('❌ Error marking messages as read:', error);
@@ -552,13 +547,17 @@ export async function markMessagesAsRead(clientId, leadId, conversation) {
  */
 export async function toggleStopAI(clientId, leadId, stopValue) {
   try {
-    console.log(`🔄 ${stopValue ? 'Pausing' : 'Resuming'} AI for lead:`, leadId, 'for client:', clientId);
+    if (import.meta.env.DEV) {
+      console.log(`🔄 ${stopValue ? 'Pausing' : 'Resuming'} AI for lead:`, leadId, 'for client:', clientId);
+    }
 
     const result = await updateLead(clientId, leadId, {
       pause_ai: stopValue,
     });
 
-    console.log(`✅ AI ${stopValue ? 'paused' : 'resumed'} successfully`);
+    if (import.meta.env.DEV) {
+      console.log(`✅ AI ${stopValue ? 'paused' : 'resumed'} successfully`);
+    }
     return result;
   } catch (error) {
     console.error('❌ Error toggling pause_ai:', error);
@@ -574,14 +573,18 @@ export async function toggleStopAI(clientId, leadId, stopValue) {
  */
 export async function scheduleVisit(clientId, leadId, visitDate) {
   try {
-    console.log(`🔄 Scheduling visit for lead:`, leadId, 'on', visitDate, 'for client:', clientId);
+    if (import.meta.env.DEV) {
+      console.log(`🔄 Scheduling visit for lead:`, leadId, 'on', visitDate, 'for client:', clientId);
+    }
 
     const result = await updateLead(clientId, leadId, {
       visit_date: visitDate,
       status: 'VISITE_PROGRAMMEE',
     });
 
-    console.log(`✅ Visit scheduled successfully, new status:`, result.statut);
+    if (import.meta.env.DEV) {
+      console.log(`✅ Visit scheduled successfully, new status:`, result.statut);
+    }
     return result;
   } catch (error) {
     console.error('❌ Error scheduling visit:', error);
@@ -596,7 +599,9 @@ export async function scheduleVisit(clientId, leadId, visitDate) {
  */
 export async function cancelVisit(clientId, leadId) {
   try {
-    console.log(`🔄 Canceling visit for lead:`, leadId, 'for client:', clientId);
+    if (import.meta.env.DEV) {
+      console.log(`🔄 Canceling visit for lead:`, leadId, 'for client:', clientId);
+    }
 
     const result = await updateLead(clientId, leadId, {
       visit_date: null,
@@ -604,7 +609,9 @@ export async function cancelVisit(clientId, leadId) {
       google_calendar_event_id: null,
     });
 
-    console.log(`✅ Visit canceled successfully`);
+    if (import.meta.env.DEV) {
+      console.log(`✅ Visit canceled successfully`);
+    }
     return result;
   } catch (error) {
     console.error('❌ Error canceling visit:', error);
@@ -704,7 +711,9 @@ ${leadData.adresse ? `
     }
 
     const result = await response.json();
-    console.log('✅ Message WhatsApp de confirmation envoyé avec succès');
+    if (import.meta.env.DEV) {
+      console.log('✅ Message WhatsApp de confirmation envoyé avec succès');
+    }
     return { success: true, data: result };
   } catch (error) {
     console.error("❌ Erreur lors de l'envoi du message WhatsApp:", error);
@@ -725,7 +734,9 @@ ${leadData.adresse ? `
  * @returns {Object} Subscription object (call .unsubscribe() to stop)
  */
 export function subscribeToLeads(clientId, { onInsert, onUpdate, onDelete }) {
-  console.log('🔄 Setting up real-time subscription for leads, client:', clientId);
+  if (import.meta.env.DEV) {
+    console.log('🔄 Setting up real-time subscription for leads, client:', clientId);
+  }
 
   const subscription = supabase
     .channel(`leads-${clientId}`)
@@ -738,7 +749,9 @@ export function subscribeToLeads(clientId, { onInsert, onUpdate, onDelete }) {
         filter: `client_id=eq.${clientId}`,
       },
       async (payload) => {
-        console.log('📥 New lead received:', payload.new.id);
+        if (import.meta.env.DEV) {
+          console.log('📥 New lead received:', payload.new.id);
+        }
         if (onInsert) {
           let bienDetails = null;
           if (payload.new.property_reference) {
@@ -757,7 +770,9 @@ export function subscribeToLeads(clientId, { onInsert, onUpdate, onDelete }) {
         filter: `client_id=eq.${clientId}`,
       },
       async (payload) => {
-        console.log('📝 Lead updated:', payload.new.id);
+        if (import.meta.env.DEV) {
+          console.log('📝 Lead updated:', payload.new.id);
+        }
         if (onUpdate) {
           let bienDetails = null;
           if (payload.new.property_reference) {
@@ -776,14 +791,18 @@ export function subscribeToLeads(clientId, { onInsert, onUpdate, onDelete }) {
         filter: `client_id=eq.${clientId}`,
       },
       (payload) => {
-        console.log('🗑️ Lead deleted:', payload.old.id);
+        if (import.meta.env.DEV) {
+          console.log('🗑️ Lead deleted:', payload.old.id);
+        }
         if (onDelete) {
           onDelete(payload.old.id);
         }
       }
     )
     .subscribe((status) => {
-      console.log('📡 Subscription status:', status);
+      if (import.meta.env.DEV) {
+        console.log('📡 Subscription status:', status);
+      }
     });
 
   return subscription;
@@ -795,7 +814,9 @@ export function subscribeToLeads(clientId, { onInsert, onUpdate, onDelete }) {
  */
 export function unsubscribeFromLeads(subscription) {
   if (subscription) {
-    console.log('🔌 Unsubscribing from leads channel');
+    if (import.meta.env.DEV) {
+      console.log('🔌 Unsubscribing from leads channel');
+    }
     supabase.removeChannel(subscription);
   }
 }
@@ -815,7 +836,9 @@ export async function resetPassword(email) {
   }
 
   try {
-    console.log('🔑 Sending password reset email to:', email);
+    if (import.meta.env.DEV) {
+      console.log('🔑 Sending password reset email to:', email);
+    }
 
     // Utiliser le proxy Vite en dev (/api/auth -> localhost:3000)
     // En production, utiliser l'URL absolue du backend
@@ -835,11 +858,15 @@ export async function resetPassword(email) {
     const data = await response.json();
 
     if (!response.ok) {
-      console.error('❌ Password reset error:', data.error);
+      if (import.meta.env.DEV) {
+        console.error('❌ Password reset error:', data.error);
+      }
       throw new Error(data.error || 'Erreur lors de l\'envoi de l\'email');
     }
 
-    console.log('✅ Password reset email sent successfully');
+    if (import.meta.env.DEV) {
+      console.log('✅ Password reset email sent successfully');
+    }
     return { success: true, message: data.message };
   } catch (error) {
     console.error('❌ Error sending password reset email:', error);

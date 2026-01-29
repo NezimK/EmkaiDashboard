@@ -1,6 +1,10 @@
 import { ConfidentialClientApplication } from '@azure/msal-node';
 import { Client } from '@microsoft/microsoft-graph-client';
+import crypto from 'crypto';
 import { getUserTokens, saveUserTokens } from './db.js';
+
+// SÉCURITÉ: Secret pour signer le state OAuth (doit être défini dans .env)
+const STATE_SECRET = process.env.STATE_SECRET || 'default-state-secret-change-me-in-production';
 
 // MSAL configuration
 function getMsalConfig() {
@@ -26,12 +30,61 @@ const SCOPES = [
   'Calendars.ReadWrite',
 ];
 
+/**
+ * SÉCURITÉ: Crée un state OAuth signé avec HMAC pour prévenir les attaques CSRF
+ */
+function createSignedState(data) {
+  const timestamp = Date.now();
+  const dataWithTimestamp = JSON.stringify({ ...data, timestamp });
+
+  const signature = crypto
+    .createHmac('sha256', STATE_SECRET)
+    .update(dataWithTimestamp)
+    .digest('hex');
+
+  return Buffer.from(JSON.stringify({
+    payload: dataWithTimestamp,
+    signature
+  })).toString('base64');
+}
+
+/**
+ * SÉCURITÉ: Vérifie et décode un state OAuth signé
+ */
+export function verifyOutlookSignedState(state) {
+  try {
+    const decoded = JSON.parse(Buffer.from(state, 'base64').toString());
+
+    const expectedSignature = crypto
+      .createHmac('sha256', STATE_SECRET)
+      .update(decoded.payload)
+      .digest('hex');
+
+    if (expectedSignature !== decoded.signature) {
+      throw new Error('Invalid state signature - possible CSRF attack');
+    }
+
+    const data = JSON.parse(decoded.payload);
+
+    // Vérifier que le state n'a pas expiré (10 minutes max)
+    const MAX_STATE_AGE = 10 * 60 * 1000;
+    if (Date.now() - data.timestamp > MAX_STATE_AGE) {
+      throw new Error('State expired');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Outlook state verification failed:', error.message);
+    throw new Error('Invalid OAuth state');
+  }
+}
+
 // Get authorization URL for Outlook
 export function getOutlookAuthUrl(userId, userEmail, agency) {
   const msalClient = getMsalClient();
 
-  // Store user info in state parameter
-  const state = Buffer.from(JSON.stringify({ userId, userEmail, agency, provider: 'outlook' })).toString('base64');
+  // SÉCURITÉ: Utiliser un state signé au lieu d'un simple base64
+  const state = createSignedState({ userId, userEmail, agency, provider: 'outlook' });
 
   const authCodeUrlParameters = {
     scopes: SCOPES,
