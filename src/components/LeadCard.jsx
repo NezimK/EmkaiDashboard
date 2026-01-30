@@ -11,7 +11,7 @@ const LeadCard = ({ lead, currentUser, onLeadUpdate, onOpenInfoModal, onOpenConv
 
     setIsAssigning(true);
     try {
-      const updatedLead = await assignLeadToAgent(agency, lead.id, currentUser.name);
+      const updatedLead = await assignLeadToAgent(agency, lead.id, currentUser.name, currentUser.id);
       if (onLeadUpdate) {
         onLeadUpdate(updatedLead);
       }

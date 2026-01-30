@@ -357,6 +357,99 @@ export async function fetchSingleLead(clientId, leadId) {
 }
 
 // ============================================================================
+// CRM FUNCTIONS (Netty API)
+// ============================================================================
+
+/**
+ * Récupère la configuration CRM du tenant
+ * @param {string} clientId - L'ID du tenant
+ * @returns {Promise<Object|null>} Config CRM { api_key, crm_user_id, crm_company_id }
+ */
+async function fetchTenantCrmConfig(clientId) {
+  if (!clientId) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('tenants')
+      .select('api_key, crm_user_id, crm_company_id')
+      .eq('id', clientId)
+      .single();
+
+    if (error) {
+      if (import.meta.env.DEV) {
+        console.warn('⚠️ Erreur récupération config CRM tenant:', error.message);
+      }
+      return null;
+    }
+
+    return data;
+  } catch (error) {
+    console.warn('⚠️ Erreur fetchTenantCrmConfig:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Récupère l'ID CRM (Netty) d'un utilisateur
+ * @param {string} userId - L'ID de l'utilisateur
+ * @returns {Promise<number|null>} L'ID Netty de l'utilisateur
+ */
+async function fetchUserCrmId(userId) {
+  if (!userId) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('crm_user_id')
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      if (import.meta.env.DEV) {
+        console.warn('⚠️ Erreur récupération crm_user_id:', error.message);
+      }
+      return null;
+    }
+
+    return data?.crm_user_id || null;
+  } catch (error) {
+    console.warn('⚠️ Erreur fetchUserCrmId:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Récupère l'ID CRM (Netty) d'un lead
+ * @param {string} leadId - L'ID du lead
+ * @param {string} clientId - L'ID du tenant
+ * @returns {Promise<number|null>} L'ID contact Netty du lead
+ */
+async function fetchLeadCrmId(leadId, clientId) {
+  if (!leadId || !clientId) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('leads')
+      .select('crm_contact_id')
+      .eq('id', leadId)
+      .eq('client_id', clientId)
+      .single();
+
+    if (error) {
+      if (import.meta.env.DEV) {
+        console.warn('⚠️ Erreur récupération crm_contact_id:', error.message);
+      }
+      return null;
+    }
+
+    return data?.crm_contact_id || null;
+  } catch (error) {
+    console.warn('⚠️ Erreur fetchLeadCrmId:', error.message);
+    return null;
+  }
+}
+
+// ============================================================================
 // UPDATE FUNCTIONS
 // ============================================================================
 
@@ -406,21 +499,29 @@ export async function updateLead(clientId, leadId, updates) {
 
 /**
  * Assigne un agent à un lead
+ * Met à jour dans Supabase ET synchronise avec l'API externe (CRM)
  * @param {string} clientId - L'ID du client/tenant
- * @param {string} leadId - L'ID du lead
+ * @param {string} leadId - L'ID du lead (contact_id pour l'API externe)
  * @param {string} agentName - Le nom de l'agent
+ * @param {string} agentUserId - L'ID de l'agent (user_id pour l'API externe)
  */
-export async function assignLeadToAgent(clientId, leadId, agentName) {
+export async function assignLeadToAgent(clientId, leadId, agentName, agentUserId = null) {
   try {
     if (import.meta.env.DEV) {
       console.log('🔄 Assigning lead:', leadId, 'to agent:', agentName, 'for client:', clientId);
     }
 
+    // 1. Mise à jour dans Supabase
     const result = await updateLead(clientId, leadId, {
       assigned_agent: agentName,
       assigned_date: new Date().toISOString(),
       status: 'EN_DECOUVERTE',
     });
+
+    // 2. Synchronisation avec l'API externe (CRM Netty) si configurée
+    if (agentUserId) {
+      await syncContactAssignment(clientId, leadId, agentUserId);
+    }
 
     if (import.meta.env.DEV) {
       console.log('✅ Lead assigned successfully:', result);
@@ -429,6 +530,69 @@ export async function assignLeadToAgent(clientId, leadId, agentName) {
   } catch (error) {
     console.error('❌ Error assigning lead to agent:', error);
     throw error;
+  }
+}
+
+/**
+ * Synchronise l'assignation d'un contact avec l'API Netty
+ * PUT /contacts/{crm_contact_id} avec linked_user_id
+ * @param {string} clientId - L'ID du tenant
+ * @param {string} leadId - L'ID du lead dans Supabase
+ * @param {string} agentUserId - L'ID de l'agent dans Supabase
+ */
+async function syncContactAssignment(clientId, leadId, agentUserId) {
+  try {
+    // 1. Récupérer l'ID contact Netty du lead
+    const crmContactId = await fetchLeadCrmId(leadId, clientId);
+    if (!crmContactId) {
+      if (import.meta.env.DEV) {
+        console.log('⚠️ Lead sans crm_contact_id - sync Netty ignorée');
+      }
+      return;
+    }
+
+    // 2. Récupérer la config CRM du tenant (api_key, crm_user_id par défaut)
+    const tenantConfig = await fetchTenantCrmConfig(clientId);
+    if (!tenantConfig?.api_key) {
+      if (import.meta.env.DEV) {
+        console.log('⚠️ Tenant sans api_key Netty - sync CRM ignorée');
+      }
+      return;
+    }
+
+    // 3. Récupérer l'ID Netty de l'agent (ou fallback sur ID par défaut du tenant)
+    const agentCrmId = await fetchUserCrmId(agentUserId) || tenantConfig.crm_user_id;
+    if (!agentCrmId) {
+      if (import.meta.env.DEV) {
+        console.log('⚠️ Aucun crm_user_id disponible - sync Netty ignorée');
+      }
+      return;
+    }
+
+    // 4. Appeler l'API Netty pour mettre à jour le contact
+    const response = await fetch(`https://webapi.netty.fr/apiv1/contacts/${crmContactId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-netty-api-key': tenantConfig.api_key,
+      },
+      body: JSON.stringify({
+        data: {
+          linked_user_id: { user_id: agentCrmId }
+        }
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.warn(`⚠️ Erreur sync Netty (${response.status}):`, errorText);
+      // On ne throw pas - l'assignation Supabase a réussi, le CRM est secondaire
+    } else if (import.meta.env.DEV) {
+      console.log('✅ Contact synchronisé avec Netty (contact_id:', crmContactId, ', user_id:', agentCrmId, ')');
+    }
+  } catch (error) {
+    console.warn('⚠️ Erreur sync Netty:', error.message);
+    // On ne throw pas - l'assignation Supabase est prioritaire
   }
 }
 

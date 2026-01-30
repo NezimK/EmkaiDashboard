@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, Calendar, Check, X, LogOut, Mail, Lock, Edit2, RefreshCw, HelpCircle } from 'lucide-react';
 import Toast from './Toast';
+import TeamManagement from './TeamManagement';
 import { authApi, API_BASE_URL } from '../services/authApi';
 import {
   getGoogleAuthUrl,
@@ -394,6 +395,16 @@ const Settings = ({ currentUser, agency, onLogout, onUserUpdate, onRestartOnboar
           </div>
         </div>
       </div>
+
+      {/* Gestion de l'équipe - Visible uniquement pour managers/admins */}
+      {(currentUser.role === 'manager' || currentUser.role === 'admin') && (
+        <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+          <TeamManagement
+            currentUser={currentUser}
+            onToast={setToast}
+          />
+        </div>
+      )}
 
       {/* Connexion au calendrier */}
       <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">

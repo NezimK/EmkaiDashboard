@@ -24,6 +24,7 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [loginError, setLoginError] = useState('');
+  const [setPasswordToken, setSetPasswordToken] = useState(null); // Token pour définir le mot de passe (invitation)
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -131,9 +132,25 @@ function App() {
     };
   }, [isAuthenticated, currentUser?.client_id, currentUser?.agency]);
 
+  // Détecter si on est sur la page /set-password (invitation)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    const path = window.location.pathname;
+
+    if (path === '/set-password' && token) {
+      setSetPasswordToken(token);
+      // Nettoyer l'URL sans recharger la page
+      window.history.replaceState({}, document.title, '/');
+    }
+  }, []);
+
   // Vérifier si un utilisateur est déjà connecté via les tokens JWT
   useEffect(() => {
     const restoreSession = async () => {
+      // Si on est en mode set-password, ne pas restaurer de session
+      if (setPasswordToken) return;
+
       // Vérifier si des tokens sont stockés
       if (!authApi.loadStoredTokens()) {
         // Pas de tokens, essayer l'ancien format (migration)
@@ -297,6 +314,32 @@ function App() {
     console.log('✅ Déconnexion réussie');
   };
 
+  // Callback après définition du mot de passe (invitation)
+  const handleSetPasswordSuccess = (user, tokens) => {
+    // Stocker les tokens
+    authApi.setTokens(tokens.accessToken, tokens.refreshToken, tokens.expiresIn, true);
+
+    // Configurer l'utilisateur
+    const userWithClientId = {
+      ...user,
+      client_id: user.tenant_id
+    };
+
+    setCurrentUser(userWithClientId);
+    setIsAuthenticated(true);
+    setSetPasswordToken(null);
+
+    // Sauvegarder
+    const userJSON = JSON.stringify(userWithClientId);
+    localStorage.setItem('emkai_user', userJSON);
+    sessionStorage.setItem('emkai_user', userJSON);
+
+    // Afficher l'onboarding pour le nouvel utilisateur
+    setShowOnboarding(true);
+
+    console.log('✅ Mot de passe défini, utilisateur connecté');
+  };
+
   // Gérer la mise à jour d'un lead (par exemple après assignation)
   const handleLeadUpdate = (updatedLead) => {
     setLeads(prevLeads =>
@@ -313,9 +356,17 @@ function App() {
     }
   };
 
-  // Si non authentifié, afficher la page de login
+  // Si non authentifié, afficher la page de login (ou set-password si invitation)
   if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} error={loginError} />;
+    return (
+      <Login
+        onLogin={handleLogin}
+        error={loginError}
+        setPasswordToken={setPasswordToken}
+        onSetPasswordSuccess={handleSetPasswordSuccess}
+        onCancelSetPassword={() => setSetPasswordToken(null)}
+      />
+    );
   }
 
   // Écran de chargement

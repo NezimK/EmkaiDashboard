@@ -15,7 +15,8 @@
 // ============================================================
 
 // Backend API URL (configurable via .env)
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+// Fusionné avec saas-backend sur le port 3000
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 // ============================================================
 // AUTHENTICATION

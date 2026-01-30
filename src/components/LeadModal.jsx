@@ -37,7 +37,7 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
     setAssignmentError(null);
 
     try {
-      const updatedLead = await assignLeadToAgent(agency, lead.id, currentUser.name);
+      const updatedLead = await assignLeadToAgent(agency, lead.id, currentUser.name, currentUser.id);
       if (onLeadUpdate) {
         onLeadUpdate(updatedLead);
       }
@@ -61,7 +61,7 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
     setAssignmentError(null);
 
     try {
-      const updatedLead = await assignLeadToAgent(agency, lead.id, currentUser.name);
+      const updatedLead = await assignLeadToAgent(agency, lead.id, currentUser.name, currentUser.id);
       if (onLeadUpdate) {
         onLeadUpdate(updatedLead);
       }

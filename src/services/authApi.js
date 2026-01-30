@@ -39,8 +39,9 @@ class AuthApi {
   /**
    * Stocke les tokens en mémoire et dans le storage approprié
    * @param {boolean} rememberMe - Si true, utilise localStorage, sinon sessionStorage
+   *                               Si undefined, garde le storage actuel (pour refresh token)
    */
-  setTokens(accessToken, refreshToken, expiresIn, rememberMe = false) {
+  setTokens(accessToken, refreshToken, expiresIn, rememberMe) {
     this.accessToken = accessToken;
     this.refreshToken = refreshToken;
     this.tokenExpiresAt = Date.now() + (expiresIn * 1000);
@@ -50,6 +51,17 @@ class AuthApi {
       refreshToken,
       tokenExpiresAt: this.tokenExpiresAt
     });
+
+    // Si rememberMe n'est pas défini (ex: lors d'un refresh), garder le storage actuel
+    if (rememberMe === undefined) {
+      // Déterminer quel storage était utilisé
+      if (localStorage.getItem('emkai_tokens')) {
+        localStorage.setItem('emkai_tokens', tokenData);
+      } else {
+        sessionStorage.setItem('emkai_tokens', tokenData);
+      }
+      return;
+    }
 
     // Nettoyer les deux storages d'abord
     localStorage.removeItem('emkai_tokens');
@@ -67,12 +79,14 @@ class AuthApi {
    * Retourne un token valide, rafraîchit si nécessaire
    */
   async getValidToken() {
-    // Si pas de token, essayer de charger depuis localStorage
+    // Si pas de token en mémoire, essayer de charger depuis le storage
     if (!this.accessToken) {
-      this.loadStoredTokens();
+      const loaded = this.loadStoredTokens();
+      console.log('🔑 Tokens chargés depuis storage:', loaded, '- accessToken:', !!this.accessToken);
     }
 
     if (!this.accessToken) {
+      console.warn('⚠️ Aucun token trouvé - localStorage:', !!localStorage.getItem('emkai_tokens'), '- sessionStorage:', !!sessionStorage.getItem('emkai_tokens'));
       throw new Error('Non authentifié');
     }
 
@@ -249,6 +263,105 @@ class AuthApi {
 
     if (!response.ok) {
       throw new Error(data.error || 'Erreur lors du changement de mot de passe');
+    }
+
+    return data;
+  }
+
+  // =============================================================================
+  // Gestion des utilisateurs (Team Management)
+  // =============================================================================
+
+  /**
+   * Récupère la liste des utilisateurs du tenant
+   */
+  async fetchUsers() {
+    const response = await this.fetchWithAuth(`${API_BASE}/api/users`);
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || 'Erreur lors de la récupération des utilisateurs');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Crée un nouvel utilisateur (envoi d'invitation par email)
+   * @param {Object} userData - { email, firstName, lastName, role }
+   */
+  async createUser(userData) {
+    const url = `${API_BASE}/api/users`;
+    console.log('📤 createUser - URL:', url);
+    console.log('📤 createUser - userData:', userData);
+
+    const response = await this.fetchWithAuth(url, {
+      method: 'POST',
+      body: JSON.stringify(userData)
+    });
+
+    console.log('📥 createUser - response status:', response.status);
+    const data = await response.json();
+    console.log('📥 createUser - response data:', data);
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Erreur lors de la création de l\'utilisateur');
+    }
+
+    return data;
+  }
+
+  /**
+   * Modifie un utilisateur existant
+   * @param {string} userId - ID de l'utilisateur
+   * @param {Object} updates - { firstName, lastName, role, is_active }
+   */
+  async updateUser(userId, updates) {
+    const response = await this.fetchWithAuth(`${API_BASE}/api/users/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates)
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Erreur lors de la modification de l\'utilisateur');
+    }
+
+    return data;
+  }
+
+  /**
+   * Désactive un utilisateur
+   * @param {string} userId - ID de l'utilisateur
+   */
+  async deactivateUser(userId) {
+    const response = await this.fetchWithAuth(`${API_BASE}/api/users/${userId}`, {
+      method: 'DELETE'
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Erreur lors de la désactivation de l\'utilisateur');
+    }
+
+    return data;
+  }
+
+  /**
+   * Renvoie l'invitation / reset le mot de passe d'un utilisateur
+   * @param {string} userId - ID de l'utilisateur
+   */
+  async resetUserPassword(userId) {
+    const response = await this.fetchWithAuth(`${API_BASE}/api/users/${userId}/reset-password`, {
+      method: 'POST'
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Erreur lors du reset du mot de passe');
     }
 
     return data;

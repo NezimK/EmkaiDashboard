@@ -11,9 +11,10 @@
  * @version 1.1.0
  */
 
-import React, { useState, useEffect } from 'react';
-import { Lock, Mail, AlertCircle, Eye, EyeOff, ArrowLeft, CheckCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Lock, Mail, AlertCircle, Eye, EyeOff, ArrowLeft, CheckCircle, UserPlus } from 'lucide-react';
 import { resetPassword } from '../services/supabase';
+import { API_BASE_URL } from '../services/authApi';
 
 /**
  * Composant de page de connexion
@@ -22,9 +23,12 @@ import { resetPassword } from '../services/supabase';
  * @param {Object} props - Propriétés du composant
  * @param {Function} props.onLogin - Callback appelé lors de la soumission (email, password)
  * @param {string} props.error - Message d'erreur à afficher (optionnel)
+ * @param {string} props.setPasswordToken - Token pour définir le mot de passe (invitation)
+ * @param {Function} props.onSetPasswordSuccess - Callback appelé après définition du mot de passe
+ * @param {Function} props.onCancelSetPassword - Callback pour annuler le mode set-password
  * @returns {JSX.Element} Page de login
  */
-const Login = ({ onLogin, error: propError }) => {
+const Login = ({ onLogin, error: propError, setPasswordToken, onSetPasswordSuccess, onCancelSetPassword }) => {
   // ============================================================
   // STATE MANAGEMENT
   // ============================================================
@@ -41,6 +45,14 @@ const Login = ({ onLogin, error: propError }) => {
   const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
   const [forgotPasswordSuccess, setForgotPasswordSuccess] = useState(false);
   const [forgotPasswordError, setForgotPasswordError] = useState('');
+
+  // États pour définir le mot de passe (invitation)
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [setPasswordLoading, setSetPasswordLoading] = useState(false);
+  const [setPasswordError, setSetPasswordError] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // ============================================================
   // EFFECTS
@@ -136,8 +148,195 @@ const Login = ({ onLogin, error: propError }) => {
     setForgotPasswordSuccess(false);
   };
 
+  /**
+   * Gère la soumission du formulaire de définition de mot de passe (invitation)
+   */
+  const handleSetPassword = async (e) => {
+    e.preventDefault();
+    setSetPasswordError('');
+
+    // Validation
+    if (newPassword.length < 8) {
+      setSetPasswordError('Le mot de passe doit faire au moins 8 caractères');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setSetPasswordError('Les mots de passe ne correspondent pas');
+      return;
+    }
+
+    setSetPasswordLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/set-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          setupToken: setPasswordToken,
+          password: newPassword
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erreur lors de la définition du mot de passe');
+      }
+
+      // Succès - appeler le callback avec l'utilisateur et les tokens
+      onSetPasswordSuccess(data.user, {
+        accessToken: data.accessToken,
+        refreshToken: data.refreshToken,
+        expiresIn: data.expiresIn
+      });
+    } catch (error) {
+      console.error('Erreur set-password:', error);
+      setSetPasswordError(error.message || 'Une erreur est survenue');
+    } finally {
+      setSetPasswordLoading(false);
+    }
+  };
+
   // ============================================================
-  // RENDER
+  // RENDER - Mode définition de mot de passe (invitation)
+  // ============================================================
+
+  if (setPasswordToken) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-dark-bg to-gray-900 flex items-center justify-center px-4">
+        {/* Arrière-plan décoratif */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-20 left-10 w-72 h-72 bg-accent/5 rounded-full blur-3xl"></div>
+          <div className="absolute bottom-20 right-10 w-96 h-96 bg-accent/10 rounded-full blur-3xl"></div>
+        </div>
+
+        <div className="relative w-full max-w-md">
+          {/* Logo */}
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-bold mb-2">
+              <span className="text-accent">IMMO</span>
+              <span className="text-white ml-2">Copilot</span>
+            </h1>
+            <p className="text-gray-400">Bienvenue dans l'équipe !</p>
+          </div>
+
+          {/* Card */}
+          <div className="bg-dark-card border border-gray-800 rounded-2xl p-8 shadow-2xl">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-accent/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <UserPlus className="w-8 h-8 text-accent" />
+              </div>
+              <h2 className="text-xl font-bold text-white mb-2">Créez votre mot de passe</h2>
+              <p className="text-gray-400 text-sm">
+                Choisissez un mot de passe sécurisé pour accéder à votre compte.
+              </p>
+            </div>
+
+            <form onSubmit={handleSetPassword} className="space-y-4">
+              {/* New Password */}
+              <div>
+                <label htmlFor="newPassword" className="block text-sm font-medium text-gray-300 mb-2">
+                  Mot de passe
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Lock className="h-5 w-5 text-gray-500" />
+                  </div>
+                  <input
+                    id="newPassword"
+                    type={showNewPassword ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="block w-full pl-10 pr-12 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
+                    placeholder="Minimum 8 caractères"
+                    required
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-300 transition-colors"
+                  >
+                    {showNewPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Confirm Password */}
+              <div>
+                <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-300 mb-2">
+                  Confirmer le mot de passe
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Lock className="h-5 w-5 text-gray-500" />
+                  </div>
+                  <input
+                    id="confirmPassword"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="block w-full pl-10 pr-12 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
+                    placeholder="Répétez le mot de passe"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-300 transition-colors"
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Error Message */}
+              {setPasswordError && (
+                <div className="flex items-center space-x-2 p-3 bg-red-900/20 border border-red-800 rounded-lg">
+                  <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+                  <span className="text-sm text-red-400">{setPasswordError}</span>
+                </div>
+              )}
+
+              {/* Submit Button */}
+              <button
+                type="submit"
+                disabled={setPasswordLoading}
+                className={`
+                  w-full py-3 px-4 rounded-lg font-semibold text-black
+                  bg-gradient-to-r from-accent to-accent-dark
+                  hover:from-accent-dark hover:to-accent
+                  transition-all duration-200 transform
+                  ${setPasswordLoading ? 'opacity-70 cursor-not-allowed' : 'hover:scale-[1.02]'}
+                  focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-bg
+                `}
+              >
+                {setPasswordLoading ? 'Création en cours...' : 'Créer mon compte'}
+              </button>
+
+              {/* Cancel link */}
+              <button
+                type="button"
+                onClick={onCancelSetPassword}
+                className="w-full text-center text-sm text-gray-400 hover:text-gray-300 transition-colors mt-4"
+              >
+                Déjà un compte ? Se connecter
+              </button>
+            </form>
+          </div>
+
+          {/* Footer */}
+          <p className="text-center text-gray-500 text-sm mt-6">
+            © 2026 IMMO Copilot - Tous droits réservés
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================
+  // RENDER - Mode connexion normale
   // ============================================================
 
   return (

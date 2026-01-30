@@ -137,7 +137,7 @@ const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate, agency })
       // Si le lead n'est pas assigné à l'utilisateur actuel, l'assigner
       if (!isAssignedToMe && currentUser) {
         console.log('📝 Assignation automatique du lead à', currentUser.name);
-        const updatedLead = await assignLeadToAgent(agency, lead.id, currentUser.name);
+        const updatedLead = await assignLeadToAgent(agency, lead.id, currentUser.name, currentUser.id);
 
         // Notifier le parent pour mettre à jour la liste
         if (onLeadUpdate) {
