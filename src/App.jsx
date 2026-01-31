@@ -32,6 +32,7 @@ function App() {
   const [selectedLeadForInfo, setSelectedLeadForInfo] = useState(null); // Lead sélectionné pour la modal Info
   const [selectedLeadForConversation, setSelectedLeadForConversation] = useState(null); // Lead sélectionné pour la modal Conversation
   const [showOnboarding, setShowOnboarding] = useState(false); // Afficher l'onboarding
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false); // Sidebar mobile
 
   // Calculer les KPIs depuis les leads en temps réel
   const getKPIs = () => {
@@ -570,17 +571,23 @@ function App() {
         toggleDarkMode={toggleDarkMode}
         onLogout={handleLogout}
         currentUser={currentUser}
+        onToggleSidebar={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
       />
 
       {/* Sidebar */}
       <Sidebar
         currentView={currentView}
-        onNavigate={setCurrentView}
+        onNavigate={(view) => {
+          setCurrentView(view);
+          setIsMobileSidebarOpen(false); // Fermer la sidebar mobile après navigation
+        }}
         currentUser={currentUser}
+        isOpen={isMobileSidebarOpen}
+        onClose={() => setIsMobileSidebarOpen(false)}
       />
 
-      {/* Main content avec padding left pour la sidebar */}
-      <main className="ml-64 px-4 sm:px-6 lg:px-8 py-8">
+      {/* Main content avec padding left pour la sidebar (responsive) */}
+      <main className="md:ml-64 px-4 sm:px-6 lg:px-8 py-8">
         {currentView === 'settings' ? (
           /* Vue Réglages */
           <Settings

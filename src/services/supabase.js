@@ -587,8 +587,17 @@ async function syncContactAssignment(clientId, leadId, agentUserId) {
       const errorText = await response.text();
       console.warn(`⚠️ Erreur sync Netty (${response.status}):`, errorText);
       // On ne throw pas - l'assignation Supabase a réussi, le CRM est secondaire
-    } else if (import.meta.env.DEV) {
-      console.log('✅ Contact synchronisé avec Netty (contact_id:', crmContactId, ', user_id:', agentCrmId, ')');
+    } else {
+      // 5. Mettre à jour crm_linked_user_id dans la table leads (sync réussie)
+      await supabase
+        .from('leads')
+        .update({ crm_linked_user_id: agentCrmId })
+        .eq('id', leadId)
+        .eq('client_id', clientId);
+
+      if (import.meta.env.DEV) {
+        console.log('✅ Contact synchronisé avec Netty (contact_id:', crmContactId, ', user_id:', agentCrmId, ')');
+      }
     }
   } catch (error) {
     console.warn('⚠️ Erreur sync Netty:', error.message);

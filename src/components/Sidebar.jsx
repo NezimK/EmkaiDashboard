@@ -1,7 +1,7 @@
 import React from 'react';
-import { Bot, Users, Calendar, RotateCcw, Archive, Shield, Settings, BarChart3, FolderOpen } from 'lucide-react';
+import { Bot, Users, Calendar, RotateCcw, Archive, Shield, Settings, BarChart3, FolderOpen, X } from 'lucide-react';
 
-const Sidebar = ({ currentView, onNavigate, currentUser }) => {
+const Sidebar = ({ currentView, onNavigate, currentUser, isOpen, onClose }) => {
   const navigationItems = [
     {
       id: 'pre_qualification',
@@ -72,8 +72,34 @@ const Sidebar = ({ currentView, onNavigate, currentUser }) => {
   });
 
   return (
-    <aside className="fixed left-0 top-16 h-[calc(100vh-4rem)] w-64 bg-white dark:bg-dark-card border-r border-gray-200 dark:border-gray-800 overflow-y-auto">
-      <nav className="p-4 space-y-2">
+    <>
+      {/* Backdrop overlay (mobile only) */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={onClose}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside className={`
+        fixed left-0 top-16 h-[calc(100vh-4rem)] w-64
+        bg-white dark:bg-dark-card border-r border-gray-200 dark:border-gray-800
+        overflow-y-auto z-50
+        transform transition-transform duration-300 ease-in-out
+        ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+        md:translate-x-0
+      `}>
+        {/* Close button (mobile only) */}
+        <button
+          onClick={onClose}
+          className="md:hidden absolute top-4 right-4 p-2 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          aria-label="Fermer le menu"
+        >
+          <X className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+        </button>
+
+        <nav className="p-4 space-y-2 pt-14 md:pt-4">
         {allItems.map((item) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;
@@ -123,7 +149,8 @@ const Sidebar = ({ currentView, onNavigate, currentUser }) => {
           </div>
         </div>
       )}
-    </aside>
+      </aside>
+    </>
   );
 };
 

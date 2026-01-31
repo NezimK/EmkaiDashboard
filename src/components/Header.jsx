@@ -1,14 +1,23 @@
 import React from 'react';
-import { Sun, Moon, LogOut, Building2 } from 'lucide-react';
+import { Sun, Moon, LogOut, Building2, Menu } from 'lucide-react';
 
-const Header = ({ darkMode, toggleDarkMode, onLogout, currentUser }) => {
+const Header = ({ darkMode, toggleDarkMode, onLogout, currentUser, onToggleSidebar }) => {
   return (
     <header className="sticky top-0 z-50 bg-white dark:bg-dark-bg border-b border-gray-200 dark:border-gray-800 backdrop-blur-sm bg-opacity-90 dark:bg-opacity-90">
       <div className="px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
+          {/* Hamburger Menu (mobile only) */}
+          <button
+            onClick={onToggleSidebar}
+            className="md:hidden p-2.5 rounded-xl bg-gray-100 dark:bg-dark-card hover:bg-gray-200 dark:hover:bg-gray-800 transition-all duration-200 mr-3"
+            aria-label="Menu"
+          >
+            <Menu className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+          </button>
+
           {/* Logo */}
           <div className="flex-1 flex items-center space-x-4">
-            <h1 className="text-2xl font-bold tracking-tight">
+            <h1 className="text-xl md:text-2xl font-bold tracking-tight">
               <span className="text-accent">IMMO</span>
               <span className="text-gray-900 dark:text-white ml-2 text-lg font-light">Copilot</span>
             </h1>
