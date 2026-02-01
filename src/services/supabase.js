@@ -797,24 +797,23 @@ export async function cancelVisit(clientId, leadId) {
 // ============================================================================
 
 /**
- * Construit l'URL du webhook N8N pour un client donné
+ * Construit l'URL du webhook N8N partagé (multi-tenant)
  * En développement, utilise le proxy Vite pour éviter les problèmes CORS
- * @param {string} clientId - L'ID du client/tenant
- * @param {string} type - Le type de webhook ('whatsapp' ou 'email')
+ * @param {string} type - Le type de webhook ('bot-qualification-multitenant', 'response-dashboard-multitenant')
  * @returns {string} L'URL complète du webhook
  */
-function buildWebhookUrl(clientId, type = 'whatsapp') {
+function buildWebhookUrl(type = 'response-dashboard-multitenant') {
   const isDev = import.meta.env.DEV;
 
   if (isDev) {
     // En développement: utiliser le proxy Vite pour éviter CORS
     // /api/n8n est réécrit vers https://n8n.emkai.fr par vite.config.js
-    return `/api/n8n/webhook-test/${type}-${clientId}`;
+    return `/api/n8n/webhook/${type}`;
   }
 
-  // En production: URL directe
-  const baseUrl = import.meta.env.VITE_N8N_WEBHOOK_BASE_URL || 'https://n8n.emkai.fr/webhook-test';
-  return `${baseUrl}/${type}-${clientId}`;
+  // En production: URL directe vers webhook partagé
+  const baseUrl = import.meta.env.VITE_N8N_WEBHOOK_BASE_URL || 'https://n8n.emkai.fr';
+  return `${baseUrl}/webhook/${type}`;
 }
 
 /**
@@ -825,13 +824,13 @@ function buildWebhookUrl(clientId, type = 'whatsapp') {
  * @returns {Promise<Object>} Résultat de l'envoi
  */
 export async function sendVisitConfirmationWhatsApp(clientId, leadData, visitDate) {
-  // Construire l'URL du webhook avec le client_id
-  const webhookUrl = buildWebhookUrl(clientId, 'whatsapp');
-
   if (!clientId) {
     console.warn('⚠️ client_id manquant pour le webhook WhatsApp');
     return { success: false, error: 'client_id manquant' };
   }
+
+  // Construire l'URL du webhook partagé
+  const webhookUrl = buildWebhookUrl('response-dashboard-multitenant');
 
   try {
     // Formater la date en français
@@ -862,13 +861,13 @@ ${leadData.adresse ? `
 
 À très bientôt ! 🤝`;
 
-    // Payload pour N8N
+    // Payload pour N8N avec tenant_id
     const payload = {
+      tenant_id: clientId,
       phone: leadData.telephone,
       message: message,
       type: 'visit_confirmation',
       leadId: leadData.id,
-      clientId: clientId,
     };
 
     const response = await fetch(webhookUrl, {

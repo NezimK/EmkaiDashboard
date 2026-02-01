@@ -1,25 +1,26 @@
 // Service pour envoyer des messages WhatsApp via n8n
-// Multi-Tenant Support: Webhooks are built dynamically using client_id
+// Multi-Tenant Support: Single shared workflow with tenant_id in payload
 
 /**
- * Construit l'URL du webhook N8N pour un client donné
+ * Construit l'URL du webhook N8N partagé (multi-tenant)
  * En développement, utilise le proxy Vite pour éviter les problèmes CORS
- * @param {string} clientId - L'ID du client/tenant (UUID)
- * @param {string} type - Le type de webhook ('whatsapp' ou 'email')
+ * @param {string} type - Le type de webhook ('whatsapp-qualification', 'response-dashboard-multitenant')
+ * @param {boolean} isTestMode - Si true, utilise webhook-test (pour les webhooks en mode test sur n8n)
  * @returns {string} L'URL complète du webhook
  */
-function buildWebhookUrl(clientId, type = 'whatsapp') {
+function buildWebhookUrl(type = 'whatsapp-qualification', isTestMode = false) {
   const isDev = import.meta.env.DEV;
+  const webhookPath = isTestMode ? 'webhook-test' : 'webhook';
 
   if (isDev) {
     // En développement: utiliser le proxy Vite pour éviter CORS
     // /api/n8n est réécrit vers https://n8n.emkai.fr par vite.config.js
-    return `/api/n8n/webhook-test/${type}-${clientId}`;
+    return `/api/n8n/${webhookPath}/${type}`;
   }
 
-  // En production: URL directe
-  const baseUrl = import.meta.env.VITE_N8N_WEBHOOK_BASE_URL || 'https://n8n.emkai.fr/webhook-test';
-  return `${baseUrl}/${type}-${clientId}`;
+  // En production: URL directe vers webhook partagé
+  const baseUrl = import.meta.env.VITE_N8N_WEBHOOK_BASE_URL || 'https://n8n.emkai.fr';
+  return `${baseUrl}/${webhookPath}/${type}`;
 }
 
 /**
@@ -36,7 +37,7 @@ export async function sendWhatsAppMessage(clientId, leadId, phoneNumber, message
     throw new Error("L'identifiant du client est requis pour envoyer un message");
   }
 
-  const webhookUrl = buildWebhookUrl(clientId, 'whatsapp');
+  const webhookUrl = buildWebhookUrl('response-dashboard-multitenant');
 
   try {
     console.log(`📤 Sending WhatsApp message for client: ${clientId}`);
@@ -50,11 +51,11 @@ export async function sendWhatsAppMessage(clientId, leadId, phoneNumber, message
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        tenant_id: clientId,
         leadId,
         phoneNumber,
         message,
         agentName,
-        clientId,
         timestamp: new Date().toISOString(),
       }),
     });
@@ -92,7 +93,7 @@ export async function sendEmail(clientId, leadId, email, subject, message, agent
     throw new Error("L'identifiant du client est requis pour envoyer un email");
   }
 
-  const webhookUrl = buildWebhookUrl(clientId, 'email');
+  const webhookUrl = buildWebhookUrl('response-dashboard-multitenant'); // Mode test pour ce webhook
 
   try {
     console.log(`📧 Sending email for client: ${clientId}`);
@@ -106,12 +107,12 @@ export async function sendEmail(clientId, leadId, email, subject, message, agent
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        tenant_id: clientId,
         leadId,
         email,
         subject,
         message,
         agentName,
-        clientId,
         timestamp: new Date().toISOString(),
       }),
     });
