@@ -14,8 +14,10 @@ import FilterBar from './components/FilterBar';
 import KpiStats from './components/KpiStats';
 import RelanceView from './components/RelanceView';
 import Onboarding from './components/Onboarding';
+import NotificationPrompt from './components/NotificationPrompt';
 import { fetchLeads, subscribeToLeads, unsubscribeFromLeads } from './services/supabase';
 import { authApi, API_BASE_URL } from './services/authApi';
+import { notifyNewLead, getNotificationPermission, getNotificationPreference } from './services/notifications';
 
 function App() {
   const [darkMode, setDarkMode] = useState(true);
@@ -96,6 +98,10 @@ function App() {
       onInsert: (newLead) => {
         console.log('📥 Nouveau lead reçu en temps réel:', newLead.nom);
         setLeads(prevLeads => [newLead, ...prevLeads]);
+        // Envoyer une notification push si activée
+        if (getNotificationPermission() === 'granted' && getNotificationPreference()) {
+          notifyNewLead(newLead);
+        }
       },
       onUpdate: (updatedLead) => {
         console.log('📝 Lead mis à jour en temps réel:', updatedLead.nom);
@@ -760,6 +766,9 @@ function App() {
         onSkip={handleOnboardingSkip}
         onNavigate={setCurrentView}
       />
+
+      {/* Prompt pour activer les notifications */}
+      <NotificationPrompt />
     </div>
   );
 }

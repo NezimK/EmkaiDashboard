@@ -55,6 +55,7 @@ export default defineConfig({
     })
   ],
   server: {
+    host: '0.0.0.0', // Accessible sur le réseau local
     proxy: {
       // Proxy pour n8n webhooks - contourne CORS en développement
       '/api/n8n': {
@@ -65,6 +66,16 @@ export default defineConfig({
       },
       // Proxy pour saas-backend auth API - contourne CORS en développement
       '/api/auth': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      // Proxy pour onboarding API
+      '/api/onboarding': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      // Proxy pour sync API
+      '/api/sync': {
         target: 'http://localhost:3000',
         changeOrigin: true,
       },

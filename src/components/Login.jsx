@@ -16,6 +16,9 @@ import { Lock, Mail, AlertCircle, Eye, EyeOff, ArrowLeft, CheckCircle, UserPlus 
 import { resetPassword } from '../services/supabase';
 import { API_BASE_URL } from '../services/authApi';
 
+// Debug: afficher l'URL du backend (à retirer en prod)
+console.log('🔧 Backend URL:', API_BASE_URL);
+
 /**
  * Composant de page de connexion
  *
@@ -330,6 +333,10 @@ const Login = ({ onLogin, error: propError, setPasswordToken, onSetPasswordSucce
           <p className="text-center text-gray-500 text-sm mt-6">
             © 2026 IMMO Copilot - Tous droits réservés
           </p>
+          {/* Debug info - à retirer en prod */}
+          <p className="text-center text-gray-600 text-xs mt-2 break-all">
+            API: {API_BASE_URL}
+          </p>
         </div>
       </div>
     );
@@ -518,6 +525,10 @@ const Login = ({ onLogin, error: propError, setPasswordToken, onSetPasswordSucce
         {/* Footer */}
         <p className="text-center text-gray-500 text-sm mt-6">
           © 2026 IMMO Copilot - Tous droits réservés
+        </p>
+        {/* Debug info - à retirer en prod */}
+        <p className="text-center text-gray-600 text-xs mt-2 break-all px-4">
+          API: {API_BASE_URL}
         </p>
       </div>
 

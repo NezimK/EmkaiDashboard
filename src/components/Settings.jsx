@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Calendar, Check, X, LogOut, Mail, Lock, Edit2, RefreshCw, HelpCircle } from 'lucide-react';
+import { Settings as SettingsIcon, Calendar, Check, X, LogOut, Mail, Lock, Edit2, RefreshCw, HelpCircle, Phone } from 'lucide-react';
 import Toast from './Toast';
 import TeamManagement from './TeamManagement';
 import { authApi, API_BASE_URL } from '../services/authApi';
@@ -207,14 +207,36 @@ const Settings = ({ currentUser, agency, onLogout, onUserUpdate, onRestartOnboar
 
   // État et gestion de la synchronisation des biens
   const [isSyncing, setIsSyncing] = useState(false);
-  const [syncStatus, setSyncStatus] = useState(null);
+
+  // État pour le numéro WhatsApp (lecture seule, assigné automatiquement)
+  const [whatsappNumber, setWhatsappNumber] = useState('');
+
+  // Charger le numéro WhatsApp existant
+  useEffect(() => {
+    const loadWhatsAppNumber = async () => {
+      try {
+        // En dev, utiliser le chemin relatif pour passer par le proxy Vite
+        // En prod, utiliser l'URL de base complète
+        const baseUrl = import.meta.env.DEV ? '' : API_BASE_URL;
+        const response = await fetch(`${baseUrl}/api/onboarding/tenant/${currentUser.tenant_id}`);
+        const data = await response.json();
+        if (data.success && data.tenant.whatsapp_number) {
+          setWhatsappNumber(data.tenant.whatsapp_number);
+        }
+      } catch (error) {
+        console.error('Erreur chargement numéro WhatsApp:', error);
+      }
+    };
+    loadWhatsAppNumber();
+  }, [currentUser.tenant_id]);
 
   const handleSyncProperties = async () => {
     setIsSyncing(true);
     try {
-      // Utiliser l'URL de base configurée dans authApi
-      // Cela assure la cohérence avec le reste de l'application (dev: 3000, prod: configured url)
-      const response = await fetch(`${API_BASE_URL}/api/sync/netty/${currentUser.tenant_id}`, {
+      // En dev, utiliser le chemin relatif pour passer par le proxy Vite
+      // En prod, utiliser l'URL de base complète
+      const baseUrl = import.meta.env.DEV ? '' : API_BASE_URL;
+      const response = await fetch(`${baseUrl}/api/sync/netty/${currentUser.tenant_id}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -500,6 +522,58 @@ const Settings = ({ currentUser, agency, onLogout, onUserUpdate, onRestartOnboar
             <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
             <span>{isSyncing ? 'Synchronisation...' : 'Synchroniser mes biens'}</span>
           </button>
+        </div>
+      </div>
+
+      {/* Numéro WhatsApp - Assigné automatiquement */}
+      <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+        <div className="flex items-center space-x-3 mb-4">
+          <Phone className="w-6 h-6 text-green-500" />
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Numéro WhatsApp de l'agence
+          </h3>
+        </div>
+
+        <p className="text-gray-600 dark:text-gray-400 mb-6 text-sm">
+          Ce numéro est utilisé pour recevoir et envoyer des messages WhatsApp aux prospects.
+          Il est assigné automatiquement à votre agence.
+        </p>
+
+        <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+          {whatsappNumber ? (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+                  <Phone className="w-5 h-5 text-green-600 dark:text-green-400" />
+                </div>
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-white text-lg">
+                    {whatsappNumber}
+                  </p>
+                  <p className="text-sm text-green-600 dark:text-green-400">
+                    Numéro WhatsApp actif
+                  </p>
+                </div>
+              </div>
+              <span className="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-full text-sm font-medium">
+                Assigné automatiquement
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-yellow-100 dark:bg-yellow-900/30 rounded-full flex items-center justify-center">
+                <Phone className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
+              </div>
+              <div>
+                <p className="font-medium text-gray-900 dark:text-white">
+                  Aucun numéro disponible
+                </p>
+                <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                  Contactez le support pour obtenir un numéro WhatsApp
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

@@ -4,6 +4,7 @@
  */
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+const WEBHOOK_RESPONSE_URL = 'https://n8n.emkai.fr/webhook/response-dashboard-multitenant';
 
 class AuthApi {
   constructor() {
@@ -22,7 +23,10 @@ class AuthApi {
   async login(email, password, rememberMe = false) {
     const response = await fetch(`${API_BASE}/api/auth/login`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true' // Bypass ngrok interstitial page
+      },
       body: JSON.stringify({ email, password })
     });
 
@@ -116,7 +120,10 @@ class AuthApi {
       try {
         const response = await fetch(`${API_BASE}/api/auth/refresh`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true'
+          },
           body: JSON.stringify({ refreshToken: this.refreshToken })
         });
 
@@ -145,7 +152,8 @@ class AuthApi {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.accessToken}`
+            'Authorization': `Bearer ${this.accessToken}`,
+            'ngrok-skip-browser-warning': 'true'
           },
           body: JSON.stringify({ refreshToken: this.refreshToken })
         });
@@ -226,7 +234,8 @@ class AuthApi {
       headers: {
         ...options.headers,
         'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true'
       }
     });
 
@@ -241,7 +250,8 @@ class AuthApi {
           headers: {
             ...options.headers,
             'Authorization': `Bearer ${newToken}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true'
           }
         });
       }
@@ -365,6 +375,36 @@ class AuthApi {
     }
 
     return data;
+  }
+
+  // =============================================================================
+  // Webhook - Réponses Dashboard Multitenant
+  // =============================================================================
+
+  /**
+   * Envoie une réponse au webhook n8n pour le dashboard multitenant
+   * @param {Object} payload - Les données à envoyer au webhook
+   */
+  async sendWebhookResponse(payload) {
+    try {
+      const response = await fetch(WEBHOOK_RESPONSE_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        console.warn('Erreur webhook:', response.status);
+        return null;
+      }
+
+      return response.json();
+    } catch (error) {
+      console.warn('Erreur lors de l\'envoi au webhook:', error);
+      return null;
+    }
   }
 }
 
