@@ -207,27 +207,52 @@ const Settings = ({ currentUser, agency, onLogout, onUserUpdate, onRestartOnboar
 
   // État et gestion de la synchronisation des biens
   const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncDate, setLastSyncDate] = useState(null);
 
   // État pour le numéro WhatsApp (lecture seule, assigné automatiquement)
   const [whatsappNumber, setWhatsappNumber] = useState('');
+  // État pour le type de compte (agence ou independant)
+  const [accountType, setAccountType] = useState(null);
 
-  // Charger le numéro WhatsApp existant
+  // Charger les informations du tenant (WhatsApp, account_type)
   useEffect(() => {
-    const loadWhatsAppNumber = async () => {
+    const loadTenantInfo = async () => {
       try {
         // En dev, utiliser le chemin relatif pour passer par le proxy Vite
         // En prod, utiliser l'URL de base complète
         const baseUrl = import.meta.env.DEV ? '' : API_BASE_URL;
         const response = await fetch(`${baseUrl}/api/onboarding/tenant/${currentUser.tenant_id}`);
         const data = await response.json();
-        if (data.success && data.tenant.whatsapp_number) {
-          setWhatsappNumber(data.tenant.whatsapp_number);
+        if (data.success) {
+          if (data.tenant.whatsapp_number) {
+            setWhatsappNumber(data.tenant.whatsapp_number);
+          }
+          if (data.tenant.account_type) {
+            setAccountType(data.tenant.account_type);
+          }
         }
       } catch (error) {
-        console.error('Erreur chargement numéro WhatsApp:', error);
+        console.error('Erreur chargement infos tenant:', error);
       }
     };
-    loadWhatsAppNumber();
+    loadTenantInfo();
+  }, [currentUser.tenant_id]);
+
+  // Charger le statut de la dernière synchronisation
+  useEffect(() => {
+    const loadSyncStatus = async () => {
+      try {
+        const baseUrl = import.meta.env.DEV ? '' : API_BASE_URL;
+        const response = await fetch(`${baseUrl}/api/sync/status/${currentUser.tenant_id}`);
+        const data = await response.json();
+        if (data.success && data.last_sync) {
+          setLastSyncDate(new Date(data.last_sync));
+        }
+      } catch (error) {
+        console.error('Erreur chargement statut sync:', error);
+      }
+    };
+    loadSyncStatus();
   }, [currentUser.tenant_id]);
 
   const handleSyncProperties = async () => {
@@ -250,7 +275,8 @@ const Settings = ({ currentUser, agency, onLogout, onUserUpdate, onRestartOnboar
           type: 'success',
           message: 'Synchronisation des biens lancée avec succès'
         });
-        // On pourrait aussi rafraîchir le statut ici
+        // Mettre à jour la date de dernière synchronisation
+        setLastSyncDate(new Date());
       } else {
         throw new Error(data.error || 'Erreur lors de la synchronisation');
       }
@@ -418,9 +444,9 @@ const Settings = ({ currentUser, agency, onLogout, onUserUpdate, onRestartOnboar
         </div>
       </div>
 
-      {/* Gestion de l'équipe - Visible uniquement pour managers/admins */}
-      {(currentUser.role === 'manager' || currentUser.role === 'admin') && (
-        <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+      {/* Gestion de l'équipe - Visible uniquement pour managers/admins de type agence */}
+      {(currentUser.role === 'manager' || currentUser.role === 'admin') && accountType === 'agence' && (
+        <div data-onboarding="settings-team" className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
           <TeamManagement
             currentUser={currentUser}
             onToast={setToast}
@@ -429,7 +455,7 @@ const Settings = ({ currentUser, agency, onLogout, onUserUpdate, onRestartOnboar
       )}
 
       {/* Connexion au calendrier */}
-      <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
+      <div data-onboarding="settings-calendar" className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
         <div className="flex items-center space-x-3 mb-4">
           <Calendar className="w-6 h-6 text-accent" />
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -522,6 +548,23 @@ const Settings = ({ currentUser, agency, onLogout, onUserUpdate, onRestartOnboar
             <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
             <span>{isSyncing ? 'Synchronisation...' : 'Synchroniser mes biens'}</span>
           </button>
+        </div>
+
+        {/* Dernière synchronisation */}
+        <div className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+          {lastSyncDate ? (
+            <p>
+              Dernière synchronisation : {lastSyncDate.toLocaleDateString('fr-FR', {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              })}
+            </p>
+          ) : (
+            <p>Aucune synchronisation effectuée</p>
+          )}
         </div>
       </div>
 

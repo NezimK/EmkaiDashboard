@@ -8,7 +8,8 @@ import {
   Rocket,
   ChevronLeft,
   ChevronRight,
-  X
+  X,
+  UserPlus
 } from 'lucide-react';
 
 const ONBOARDING_STEPS = [
@@ -66,6 +67,28 @@ const ONBOARDING_STEPS = [
     icon: Calendar,
     iconColor: 'text-orange-400',
     iconBg: 'bg-orange-400/10',
+    tooltipPosition: 'right'
+  },
+  {
+    id: 'calendrier',
+    type: 'spotlight',
+    target: '[data-onboarding="settings-calendar"]',
+    navigateTo: 'settings',
+    description: 'Connectez votre calendrier Google ou Outlook pour synchroniser automatiquement vos visites.',
+    icon: Calendar,
+    iconColor: 'text-blue-400',
+    iconBg: 'bg-blue-400/10',
+    tooltipPosition: 'right'
+  },
+  {
+    id: 'invite-agents',
+    type: 'spotlight',
+    target: '[data-onboarding="settings-team"]',
+    navigateTo: 'settings',
+    description: 'Invitez vos agents pour qu\'ils puissent accéder à leurs dossiers et gérer leurs leads.',
+    icon: UserPlus,
+    iconColor: 'text-green-400',
+    iconBg: 'bg-green-400/10',
     tooltipPosition: 'right'
   },
   {
@@ -202,13 +225,40 @@ function TooltipArrow({ position, targetRect }) {
   return null;
 }
 
-export default function Onboarding({ isOpen, onComplete, onSkip, onNavigate }) {
+export default function Onboarding({ isOpen, onComplete, onSkip, onNavigate, currentUser }) {
   const [currentStep, setCurrentStep] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [targetRect, setTargetRect] = useState(null);
+  const [accountType, setAccountType] = useState(null);
 
-  const step = ONBOARDING_STEPS[currentStep];
+  // Charger le type de compte du tenant
+  useEffect(() => {
+    const loadAccountType = async () => {
+      if (!currentUser?.tenant_id) return;
+      try {
+        const response = await fetch(`/api/onboarding/tenant/${currentUser.tenant_id}`);
+        const data = await response.json();
+        if (data.success && data.tenant.account_type) {
+          setAccountType(data.tenant.account_type);
+        }
+      } catch (error) {
+        console.error('Erreur chargement account_type:', error);
+      }
+    };
+    loadAccountType();
+  }, [currentUser?.tenant_id]);
+
+  // Filtrer les étapes selon le type de compte
+  // Seule l'étape "invite-agents" est exclue pour les indépendants
+  const filteredSteps = ONBOARDING_STEPS.filter(step => {
+    if (step.id === 'invite-agents' && accountType === 'independant') {
+      return false;
+    }
+    return true;
+  });
+
+  const step = filteredSteps[currentStep];
 
   // Detect reduced motion preference
   useEffect(() => {
@@ -222,16 +272,16 @@ export default function Onboarding({ isOpen, onComplete, onSkip, onNavigate }) {
 
   // Navigate to the corresponding view when step changes
   useEffect(() => {
-    if (!isOpen || !onNavigate) return;
+    if (!isOpen || !onNavigate || !step) return;
 
     if (step.navigateTo) {
       onNavigate(step.navigateTo);
     }
-  }, [isOpen, currentStep, step.navigateTo, onNavigate]);
+  }, [isOpen, currentStep, step?.navigateTo, onNavigate]);
 
   // Update target position
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !step) return;
 
     const updatePosition = () => {
       if (step.target) {
@@ -247,8 +297,23 @@ export default function Onboarding({ isOpen, onComplete, onSkip, onNavigate }) {
       }
     };
 
-    // Delay to allow navigation to complete
-    const timer = setTimeout(updatePosition, 50);
+    // Scroll to target element if needed
+    const scrollToTarget = () => {
+      if (step.target) {
+        const element = document.querySelector(step.target);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Update position after scroll completes
+          setTimeout(updatePosition, 400);
+        }
+      }
+    };
+
+    // Delay to allow navigation to complete, then scroll
+    const timer = setTimeout(() => {
+      scrollToTarget();
+      updatePosition();
+    }, 100);
 
     window.addEventListener('resize', updatePosition);
     window.addEventListener('scroll', updatePosition, true);
@@ -258,19 +323,19 @@ export default function Onboarding({ isOpen, onComplete, onSkip, onNavigate }) {
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
     };
-  }, [isOpen, step.target, currentStep]);
+  }, [isOpen, step?.target, currentStep]);
 
   const nextStep = useCallback(() => {
     if (isAnimating) return;
 
-    if (currentStep < ONBOARDING_STEPS.length - 1) {
+    if (currentStep < filteredSteps.length - 1) {
       setIsAnimating(true);
       setCurrentStep(prev => prev + 1);
       setTimeout(() => setIsAnimating(false), 200);
     } else {
       onComplete();
     }
-  }, [currentStep, isAnimating, onComplete]);
+  }, [currentStep, isAnimating, onComplete, filteredSteps.length]);
 
   const prevStep = useCallback(() => {
     if (isAnimating || currentStep === 0) return;
@@ -310,10 +375,10 @@ export default function Onboarding({ isOpen, onComplete, onSkip, onNavigate }) {
     };
   }, [isOpen]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !step) return null;
 
   const Icon = step.icon;
-  const isLastStep = currentStep === ONBOARDING_STEPS.length - 1;
+  const isLastStep = currentStep === filteredSteps.length - 1;
   const isFirstStep = currentStep === 0;
 
   const transitionClass = prefersReducedMotion
@@ -381,7 +446,7 @@ export default function Onboarding({ isOpen, onComplete, onSkip, onNavigate }) {
           <div className="flex items-center justify-between">
             {/* Progress dots */}
             <div className="flex items-center gap-1">
-              {ONBOARDING_STEPS.map((_, index) => (
+              {filteredSteps.map((_, index) => (
                 <div
                   key={index}
                   className={`
@@ -394,7 +459,7 @@ export default function Onboarding({ isOpen, onComplete, onSkip, onNavigate }) {
                 />
               ))}
               <span className="text-[10px] text-gray-500 ml-1.5">
-                {currentStep + 1}/{ONBOARDING_STEPS.length}
+                {currentStep + 1}/{filteredSteps.length}
               </span>
             </div>
 

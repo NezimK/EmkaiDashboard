@@ -35,6 +35,7 @@ function App() {
   const [selectedLeadForConversation, setSelectedLeadForConversation] = useState(null); // Lead sélectionné pour la modal Conversation
   const [showOnboarding, setShowOnboarding] = useState(false); // Afficher l'onboarding
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false); // Sidebar mobile
+  const [accountType, setAccountType] = useState(null); // Type de compte (agence ou independant)
 
   // Calculer les KPIs depuis les leads en temps réel
   const getKPIs = () => {
@@ -273,6 +274,23 @@ function App() {
       setLoginError(error.message || 'Erreur de connexion');
     }
   };
+
+  // Charger le type de compte du tenant
+  useEffect(() => {
+    const loadAccountType = async () => {
+      if (!currentUser?.tenant_id) return;
+      try {
+        const response = await fetch(`/api/onboarding/tenant/${currentUser.tenant_id}`);
+        const data = await response.json();
+        if (data.success && data.tenant.account_type) {
+          setAccountType(data.tenant.account_type);
+        }
+      } catch (error) {
+        console.error('Erreur chargement account_type:', error);
+      }
+    };
+    loadAccountType();
+  }, [currentUser?.tenant_id]);
 
   // Handlers pour l'onboarding
   const handleOnboardingComplete = () => {
@@ -588,6 +606,7 @@ function App() {
           setIsMobileSidebarOpen(false); // Fermer la sidebar mobile après navigation
         }}
         currentUser={currentUser}
+        accountType={accountType}
         isOpen={isMobileSidebarOpen}
         onClose={() => setIsMobileSidebarOpen(false)}
       />
@@ -765,6 +784,7 @@ function App() {
         onComplete={handleOnboardingComplete}
         onSkip={handleOnboardingSkip}
         onNavigate={setCurrentView}
+        currentUser={currentUser}
       />
 
       {/* Prompt pour activer les notifications */}

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Bot, Users, Calendar, RotateCcw, Archive, Shield, Settings, BarChart3, FolderOpen, X } from 'lucide-react';
 
-const Sidebar = ({ currentView, onNavigate, currentUser, isOpen, onClose }) => {
+const Sidebar = ({ currentView, onNavigate, currentUser, accountType, isOpen, onClose }) => {
   const navigationItems = [
     {
       id: 'pre_qualification',
@@ -51,10 +51,10 @@ const Sidebar = ({ currentView, onNavigate, currentUser, isOpen, onClose }) => {
     }
   ];
 
-  // Ajouter la vue Manager si l'utilisateur est manager
+  // Ajouter la vue Manager si l'utilisateur est manager ET si c'est une agence
   let allItems = [...navigationItems];
 
-  if (currentUser?.role === 'manager') {
+  if (currentUser?.role === 'manager' && accountType === 'agence') {
     allItems.push({
       id: 'manager',
       label: 'Vue Manager',
@@ -143,7 +143,7 @@ const Sidebar = ({ currentView, onNavigate, currentUser, isOpen, onClose }) => {
                 {currentUser.name || currentUser.nom}
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">
-                {currentUser.role}
+                {accountType === 'independant' ? 'Indépendant' : currentUser.role}
               </p>
             </div>
           </div>
