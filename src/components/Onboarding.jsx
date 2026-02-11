@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Sparkles,
   Bot,
@@ -74,6 +74,7 @@ const ONBOARDING_STEPS = [
     type: 'spotlight',
     target: '[data-onboarding="settings-calendar"]',
     navigateTo: 'settings',
+    settingsTab: 'integrations',
     description: 'Connectez votre calendrier Google ou Outlook pour synchroniser automatiquement vos visites.',
     icon: Calendar,
     iconColor: 'text-blue-400',
@@ -85,11 +86,12 @@ const ONBOARDING_STEPS = [
     type: 'spotlight',
     target: '[data-onboarding="settings-team"]',
     navigateTo: 'settings',
+    settingsTab: 'abonnement',
     description: 'Invitez vos agents pour qu\'ils puissent accéder à leurs dossiers et gérer leurs leads.',
     icon: UserPlus,
     iconColor: 'text-green-400',
     iconBg: 'bg-green-400/10',
-    tooltipPosition: 'right'
+    tooltipPosition: 'left'
   },
   {
     id: 'ready',
@@ -122,24 +124,21 @@ function FullOverlay({ targetRect, padding = 8, highlightElement }) {
 
   return (
     <div className="fixed inset-0 z-40 pointer-events-auto">
-      {/* Fond sombre - opacité réduite pour voir le contenu */}
-      <div className="absolute inset-0 bg-black/50" />
+      {/* Fond sombre uniforme - seulement quand pas de spotlight */}
+      {!targetRect && <div className="absolute inset-0 bg-black/60" />}
 
-      {/* Trou transparent pour le spotlight */}
+      {/* Spotlight avec boxShadow qui fait l'ombre autour */}
       {targetRect && (
-        <>
-          {/* Bordure lumineuse dorée */}
-          <div
-            className="absolute rounded-xl border-2 border-accent z-10"
-            style={{
-              top: targetRect.y - padding,
-              left: targetRect.x - padding,
-              width: targetRect.width + padding * 2,
-              height: targetRect.height + padding * 2,
-              boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.50), 0 0 20px 4px rgba(212, 175, 55, 0.4)'
-            }}
-          />
-        </>
+        <div
+          className="absolute rounded-xl border-2 border-accent z-10"
+          style={{
+            top: targetRect.y - padding,
+            left: targetRect.x - padding,
+            width: targetRect.width + padding * 2,
+            height: targetRect.height + padding * 2,
+            boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.60), 0 0 20px 4px rgba(212, 175, 55, 0.4)'
+          }}
+        />
       )}
     </div>
   );
@@ -182,6 +181,27 @@ function getTooltipStyle(targetRect, position) {
         transform: 'translateY(-50%)'
       };
     }
+    case 'left': {
+      const tooltipRight = targetRect.left - gap;
+      const top = targetRect.top + targetRect.height / 2;
+
+      // Si la tooltip dépasse à gauche, la placer en dessous
+      if (tooltipRight - tooltipWidth < 20) {
+        return {
+          position: 'fixed',
+          top: `${targetRect.bottom + gap}px`,
+          left: `${Math.max(20, targetRect.left)}px`,
+          transform: 'translateY(0)'
+        };
+      }
+
+      return {
+        position: 'fixed',
+        top: `${top}px`,
+        left: `${tooltipRight}px`,
+        transform: 'translate(-100%, -50%)'
+      };
+    }
     case 'bottom': {
       return {
         position: 'fixed',
@@ -222,38 +242,53 @@ function TooltipArrow({ position, targetRect }) {
     );
   }
 
+  if (position === 'left') {
+    return (
+      <div
+        className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-full"
+        style={{ marginRight: '-2px' }}
+      >
+        <div
+          className="w-0 h-0"
+          style={{
+            borderTop: '6px solid transparent',
+            borderBottom: '6px solid transparent',
+            borderLeft: '6px solid #1A1A1A'
+          }}
+        />
+      </div>
+    );
+  }
+
   return null;
 }
 
-export default function Onboarding({ isOpen, onComplete, onSkip, onNavigate, currentUser }) {
+// Lock/unlock scroll on html+body
+function lockScroll() {
+  document.documentElement.style.overflow = 'hidden';
+  document.body.style.overflow = 'hidden';
+}
+
+function unlockScroll() {
+  document.documentElement.style.overflow = '';
+  document.body.style.overflow = '';
+}
+
+export default function Onboarding({ isOpen, onComplete, onSkip, onNavigate, onSettingsTabChange, currentUser, accountType }) {
   const [currentStep, setCurrentStep] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [targetRect, setTargetRect] = useState(null);
-  const [accountType, setAccountType] = useState(null);
+  const scrollTimerRef = useRef(null);
 
-  // Charger le type de compte du tenant
-  useEffect(() => {
-    const loadAccountType = async () => {
-      if (!currentUser?.tenant_id) return;
-      try {
-        const response = await fetch(`/api/onboarding/tenant/${currentUser.tenant_id}`);
-        const data = await response.json();
-        if (data.success && data.tenant.account_type) {
-          setAccountType(data.tenant.account_type);
-        }
-      } catch (error) {
-        console.error('Erreur chargement account_type:', error);
-      }
-    };
-    loadAccountType();
-  }, [currentUser?.tenant_id]);
-
-  // Filtrer les étapes selon le type de compte
-  // Seule l'étape "invite-agents" est exclue pour les indépendants
+  // Filtrer les étapes selon le type de compte et le rôle
+  // L'étape "invite-agents" est exclue pour les indépendants et les agents
   const filteredSteps = ONBOARDING_STEPS.filter(step => {
-    if (step.id === 'invite-agents' && accountType === 'independant') {
-      return false;
+    if (step.id === 'invite-agents') {
+      // Exclure pour les indépendants
+      if (accountType === 'independant') return false;
+      // Exclure pour les agents (seuls managers/admins peuvent inviter)
+      if (currentUser?.role === 'agent') return false;
     }
     return true;
   });
@@ -270,6 +305,16 @@ export default function Onboarding({ isOpen, onComplete, onSkip, onNavigate, cur
     return () => mediaQuery.removeEventListener('change', handler);
   }, []);
 
+  // Lock scroll when onboarding is open
+  useEffect(() => {
+    if (isOpen) {
+      lockScroll();
+    } else {
+      unlockScroll();
+    }
+    return () => unlockScroll();
+  }, [isOpen]);
+
   // Navigate to the corresponding view when step changes
   useEffect(() => {
     if (!isOpen || !onNavigate || !step) return;
@@ -277,9 +322,13 @@ export default function Onboarding({ isOpen, onComplete, onSkip, onNavigate, cur
     if (step.navigateTo) {
       onNavigate(step.navigateTo);
     }
-  }, [isOpen, currentStep, step?.navigateTo, onNavigate]);
+    // Switch settings tab if the step targets a specific tab
+    if (step.settingsTab && onSettingsTabChange) {
+      onSettingsTabChange(step.settingsTab);
+    }
+  }, [isOpen, currentStep, step?.navigateTo, step?.settingsTab, onNavigate, onSettingsTabChange]);
 
-  // Update target position
+  // Update target position and scroll to target
   useEffect(() => {
     if (!isOpen || !step) return;
 
@@ -297,31 +346,94 @@ export default function Onboarding({ isOpen, onComplete, onSkip, onNavigate, cur
       }
     };
 
-    // Scroll to target element if needed
+    // Scroll to target: unlock scroll, use native scrollIntoView, re-lock
     const scrollToTarget = () => {
-      if (step.target) {
-        const element = document.querySelector(step.target);
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          // Update position after scroll completes
-          setTimeout(updatePosition, 400);
-        }
+      if (!step.target) {
+        updatePosition();
+        return;
+      }
+
+      const element = document.querySelector(step.target);
+      if (!element) {
+        updatePosition();
+        return;
+      }
+
+      // Temporarily unlock, let the browser scroll to the element, re-lock
+      unlockScroll();
+      element.scrollIntoView({ behavior: 'auto', block: 'center' });
+      requestAnimationFrame(() => {
+        lockScroll();
+        updatePosition();
+      });
+    };
+
+    // For steps targeting elements inside Settings tabs, the element may not be
+    // in the DOM yet (tab switch + React re-render is async). Poll until found.
+    let pollTimer = null;
+    let pollCount = 0;
+    const maxPolls = 20; // 20 * 100ms = 2s max polling
+
+    const waitForElementAndScroll = () => {
+      if (!step.target) {
+        scrollToTarget();
+        return;
+      }
+
+      const element = document.querySelector(step.target);
+      if (element) {
+        scrollToTarget();
+        return;
+      }
+
+      // Element not found yet, poll
+      if (pollCount < maxPolls) {
+        pollCount++;
+        pollTimer = setTimeout(waitForElementAndScroll, 100);
       }
     };
 
-    // Delay to allow navigation to complete, then scroll
-    const timer = setTimeout(() => {
-      scrollToTarget();
-      updatePosition();
-    }, 100);
+    // Initial scroll after navigation/render
+    const timer = setTimeout(waitForElementAndScroll, 150);
+    scrollTimerRef.current = timer;
+
+    // For steps on Settings page, async sections (SubscriptionSection, TeamManagement)
+    // change the layout height after their API calls complete. Use MutationObserver
+    // to re-scroll whenever the DOM subtree changes (e.g. loader replaced by content).
+    let observer = null;
+    let debounceTimer = null;
+    if (step.target) {
+      let settled = false;
+      const stopTimer = setTimeout(() => {
+        settled = true;
+        if (observer) observer.disconnect();
+      }, 4000);
+
+      observer = new MutationObserver(() => {
+        if (settled) return;
+        // Debounce: batch rapid DOM mutations into a single re-scroll
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(scrollToTarget, 100);
+      });
+
+      // Only observe <main> childList changes, not attributes (avoids overflow style loops)
+      const mainEl = document.querySelector('main');
+      if (mainEl) {
+        observer.observe(mainEl, { childList: true, subtree: true, attributes: false });
+      }
+
+      scrollTimerRef.current = stopTimer;
+    }
 
     window.addEventListener('resize', updatePosition);
-    window.addEventListener('scroll', updatePosition, true);
 
     return () => {
       clearTimeout(timer);
+      clearTimeout(pollTimer);
+      clearTimeout(debounceTimer);
+      if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+      if (observer) observer.disconnect();
       window.removeEventListener('resize', updatePosition);
-      window.removeEventListener('scroll', updatePosition, true);
     };
   }, [isOpen, step?.target, currentStep]);
 
@@ -362,18 +474,6 @@ export default function Onboarding({ isOpen, onComplete, onSkip, onNavigate, cur
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, nextStep, prevStep, onSkip]);
-
-  // Block scroll
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [isOpen]);
 
   if (!isOpen || !step) return null;
 

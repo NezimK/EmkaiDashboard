@@ -1,29 +1,38 @@
 import { useState } from 'react';
-import { AlertCircle, Info, UserCheck, Clock, MessageSquare } from 'lucide-react';
-import { assignLeadToAgent } from '../services/supabase';
+import { AlertCircle, Info, UserCheck, Lock, Clock, MessageSquare } from 'lucide-react';
+import { assignLeadToAgent } from '../services/leadsApi';
 import { formatTimeAgo } from '../utils/timeAgo';
 
 const LeadCard = ({ lead, currentUser, onLeadUpdate, onOpenInfoModal, onOpenConversationModal, showLastMessage = false, agency }) => {
   const [isAssigning, setIsAssigning] = useState(false);
+  const [assignError, setAssignError] = useState(null);
 
   const handleAssignToMe = async () => {
     if (!currentUser || isAssigning) return;
 
     setIsAssigning(true);
+    setAssignError(null);
     try {
-      const updatedLead = await assignLeadToAgent(agency, lead.id, currentUser.name, currentUser.id);
+      const updatedLead = await assignLeadToAgent(lead.id, currentUser.name);
       if (onLeadUpdate) {
         onLeadUpdate(updatedLead);
       }
     } catch (error) {
       console.error('Erreur lors de l\'assignation:', error);
+      if (error.code === 'ALREADY_ASSIGNED') {
+        setAssignError('Ce dossier a déjà été pris par un autre agent.');
+      } else {
+        setAssignError('Erreur lors de la prise en charge.');
+      }
     } finally {
       setIsAssigning(false);
     }
   };
 
-  // Déterminer si le lead est assigné à moi
+  // Déterminer si le lead est assigné à moi ou à un autre
   const isAssignedToMe = lead.agent_en_charge && currentUser && lead.agent_en_charge === currentUser.name;
+  const isAssignedToOther = lead.agent_en_charge && currentUser && lead.agent_en_charge !== currentUser.name;
+  const isManager = currentUser?.role === 'manager';
 
   // Récupérer le dernier message de la conversation
   const getLastMessage = () => {
@@ -114,20 +123,36 @@ const LeadCard = ({ lead, currentUser, onLeadUpdate, onOpenInfoModal, onOpenConv
         {/* Actions */}
         <div className="flex items-center justify-between">
           {/* Bouton "M'assigner ce dossier" */}
-          <button
-            onClick={handleAssignToMe}
-            disabled={isAssigning || isAssignedToMe}
-            className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-all duration-200 ${
-              isAssignedToMe
-                ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 cursor-default'
-                : 'hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 border border-transparent hover:border-blue-200 dark:hover:border-blue-800'
-            } ${isAssigning ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            <UserCheck className="w-4 h-4" />
-            <span className="text-xs font-medium">
-              {isAssigning ? 'Prise en cours...' : isAssignedToMe ? 'Mon Dossier' : 'Prendre le dossier'}
+          {isAssignedToOther && !isManager ? (
+            <div className="flex items-center space-x-2 px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 cursor-default">
+              <Lock className="w-4 h-4 text-gray-400" />
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                {lead.agent_en_charge}
+              </span>
+            </div>
+          ) : (
+            <button
+              onClick={handleAssignToMe}
+              disabled={isAssigning || isAssignedToMe}
+              className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-all duration-200 ${
+                isAssignedToMe
+                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 cursor-default'
+                  : 'hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 border border-transparent hover:border-blue-200 dark:hover:border-blue-800'
+              } ${isAssigning ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <UserCheck className="w-4 h-4" />
+              <span className="text-xs font-medium">
+                {isAssigning ? 'Prise en cours...' : isAssignedToMe ? 'Mon Dossier' : 'Prendre le dossier'}
+              </span>
+            </button>
+          )}
+
+          {/* Erreur d'assignation (dossier déjà pris) */}
+          {assignError && (
+            <span className="text-xs text-red-500 dark:text-red-400 animate-slide-up">
+              {assignError}
             </span>
-          </button>
+          )}
 
           {/* Boutons Message et Info */}
           <div className="flex items-center space-x-2">

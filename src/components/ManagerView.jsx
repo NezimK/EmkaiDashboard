@@ -1,8 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Users, ChevronDown, ChevronUp } from 'lucide-react';
 import LeadCard from './LeadCard';
+import { authApi } from '../services/authApi';
 
 const ManagerView = ({ leads, currentUser, onLeadUpdate, onOpenInfoModal, onOpenConversationModal, agency }) => {
+  const [teamAgentCount, setTeamAgentCount] = useState(0);
+
+  // Charger le nombre réel d'agents actifs dans l'équipe
+  useEffect(() => {
+    const loadAgentCount = async () => {
+      try {
+        const data = await authApi.fetchAgents();
+        const agents = data.agents || [];
+        // Compter uniquement les agents (exclure le manager lui-même)
+        setTeamAgentCount(agents.filter(a => a.role === 'agent').length);
+      } catch (error) {
+        console.error('Erreur chargement agents:', error);
+      }
+    };
+    loadAgentCount();
+  }, []);
+
   // Grouper les leads par agent
   const leadsByAgent = leads.reduce((acc, lead) => {
     const agent = lead.agent_en_charge || 'Non assigné';
@@ -30,7 +48,7 @@ const ManagerView = ({ leads, currentUser, onLeadUpdate, onOpenInfoModal, onOpen
 
   // Calculer les statistiques globales
   const totalLeads = leads.length;
-  const agentCount = Object.keys(leadsByAgent).filter(a => a !== 'Non assigné').length;
+  const agentCount = teamAgentCount;
 
   return (
     <div className="space-y-6">

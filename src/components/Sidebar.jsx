@@ -1,7 +1,13 @@
 import React from 'react';
-import { Bot, Users, Calendar, RotateCcw, Archive, Shield, Settings, BarChart3, FolderOpen, X } from 'lucide-react';
+import { Bot, Users, Calendar, Archive, Shield, Settings, BarChart3, FolderOpen, X, Lock } from 'lucide-react';
 
-const Sidebar = ({ currentView, onNavigate, currentUser, accountType, isOpen, onClose }) => {
+// Plans qui ont accès aux statistiques (KPIs)
+const PLANS_WITH_KPI = ['avance', 'premium'];
+
+const Sidebar = ({ currentView, onNavigate, currentUser, accountType, isOpen, onClose, currentPlan }) => {
+  // Vérifier si le plan actuel a accès aux statistiques
+  const hasKpiAccess = PLANS_WITH_KPI.includes(currentPlan);
+
   const navigationItems = [
     {
       id: 'pre_qualification',
@@ -32,22 +38,12 @@ const Sidebar = ({ currentView, onNavigate, currentUser, accountType, isOpen, on
       onboardingId: 'nav-visites'
     },
     {
-      id: 'relance',
-      label: 'Relances & suivis',
-      icon: RotateCcw,
-      color: 'text-accent'
-    },
-    {
       id: 'kpi',
       label: 'Statistiques',
       icon: BarChart3,
-      color: 'text-accent'
-    },
-    {
-      id: 'archives',
-      label: 'Archivés',
-      icon: Archive,
-      color: 'text-gray-600 dark:text-gray-400'
+      color: 'text-accent',
+      requiresPlan: PLANS_WITH_KPI, // Plans requis pour accéder à cette fonctionnalité
+      locked: !hasKpiAccess
     }
   ];
 
@@ -105,25 +101,33 @@ const Sidebar = ({ currentView, onNavigate, currentUser, accountType, isOpen, on
           const isActive = currentView === item.id;
           const isManagerView = item.id === 'manager';
           const isSettingsView = item.id === 'settings';
+          const isLocked = item.locked;
 
           return (
             <button
               key={item.id}
-              onClick={() => onNavigate(item.id)}
+              onClick={() => !isLocked && onNavigate(item.id)}
+              disabled={isLocked}
               data-onboarding={item.onboardingId}
+              title={isLocked ? 'Disponible avec le plan Avancé ou Premium' : undefined}
               className={`
                 w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200
-                ${isActive
-                  ? 'bg-accent/10 border-l-4 border-accent'
-                  : 'hover:bg-gray-100 dark:hover:bg-gray-800 border-l-4 border-transparent'
+                ${isLocked
+                  ? 'opacity-50 cursor-not-allowed'
+                  : isActive
+                    ? 'bg-accent/10 border-l-4 border-accent'
+                    : 'hover:bg-gray-100 dark:hover:bg-gray-800 border-l-4 border-transparent'
                 }
                 ${isManagerView || isSettingsView ? 'mt-4 border-t border-gray-200 dark:border-gray-800 pt-4' : ''}
               `}
             >
-              <Icon className={`w-5 h-5 ${isActive ? item.color : 'text-gray-500 dark:text-gray-400'}`} />
-              <span className={`text-sm font-medium ${isActive ? 'text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}>
+              <Icon className={`w-5 h-5 ${isLocked ? 'text-gray-600' : isActive ? item.color : 'text-gray-500 dark:text-gray-400'}`} />
+              <span className={`text-sm font-medium flex-1 text-left ${isLocked ? 'text-gray-600' : isActive ? 'text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}>
                 {item.label}
               </span>
+              {isLocked && (
+                <Lock className="w-4 h-4 text-gray-600" />
+              )}
             </button>
           );
         })}

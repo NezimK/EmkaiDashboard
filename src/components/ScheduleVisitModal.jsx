@@ -17,12 +17,22 @@
  * @version 1.0.0
  */
 
-import React, { useState } from 'react';
-import { X, Calendar, Clock, Trash2 } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { X, Calendar, Clock, Trash2, AlertTriangle } from 'lucide-react';
 import Toast from './Toast';
-import { scheduleVisit, cancelVisit, sendVisitConfirmationWhatsApp, updateLead } from '../services/supabase';
+import { scheduleVisit, cancelVisit, updateLead } from '../services/leadsApi';
+import { sendVisitConfirmationWhatsApp } from '../services/supabase';
 import { exportToCalendar } from '../utils/calendarExport';
-import { createGoogleCalendarEvent, checkGoogleCalendarStatus, deleteGoogleCalendarEvent } from '../services/calendarApi';
+import {
+  createGoogleCalendarEvent,
+  updateGoogleCalendarEvent,
+  checkGoogleCalendarStatus,
+  deleteGoogleCalendarEvent,
+  createOutlookCalendarEvent,
+  updateOutlookCalendarEvent,
+  checkOutlookCalendarStatus,
+  deleteOutlookCalendarEvent
+} from '../services/calendarApi';
 
 /**
  * Modal de gestion des visites
@@ -35,7 +45,7 @@ import { createGoogleCalendarEvent, checkGoogleCalendarStatus, deleteGoogleCalen
  * @param {string} props.agency - Identifiant de l'agence (AGENCY_A ou AGENCY_B)
  * @returns {JSX.Element} Composant modal
  */
-const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
+const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency, allLeads = [] }) => {
   // ============================================================
   // STATE MANAGEMENT
   // ============================================================
@@ -64,6 +74,45 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
   }, [lead.date_visite]);
 
   // ============================================================
+  // CONFLICT DETECTION
+  // ============================================================
+
+  /**
+   * Détecte les conflits de visite :
+   * - Même bien (property_reference) au même créneau (±1h)
+   * - Même agent au même créneau (±1h)
+   */
+  const conflicts = useMemo(() => {
+    if (!visitDate || !visitTime || allLeads.length === 0) return [];
+
+    const selectedDateTime = new Date(`${visitDate}T${visitTime}:00`);
+    const ONE_HOUR = 60 * 60 * 1000;
+
+    return allLeads.filter(other => {
+      // Exclure le lead actuel
+      if (other.id === lead.id) return false;
+      // Uniquement les leads avec une visite programmée
+      if (!other.date_visite) return false;
+
+      const otherDateTime = new Date(other.date_visite);
+      const timeDiff = Math.abs(selectedDateTime.getTime() - otherDateTime.getTime());
+
+      // Conflit si dans le même créneau (±1h)
+      if (timeDiff >= ONE_HOUR) return false;
+
+      // Conflit sur le même bien
+      const sameBien = lead.property_reference && other.property_reference &&
+        lead.property_reference === other.property_reference;
+
+      // Conflit sur le même agent
+      const sameAgent = lead.agent_en_charge && other.agent_en_charge &&
+        lead.agent_en_charge === other.agent_en_charge;
+
+      return sameBien || sameAgent;
+    });
+  }, [visitDate, visitTime, allLeads, lead.id, lead.property_reference, lead.agent_en_charge]);
+
+  // ============================================================
   // EVENT HANDLERS
   // ============================================================
 
@@ -80,6 +129,117 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
    * 4. Fallback vers export manuel (Outlook) si Google Calendar non connecté
    * 5. Affichage du toast de confirmation
    */
+  /**
+   * Synchronise les calendriers et WhatsApp en arrière-plan (fire-and-forget)
+   * Appelé après la fermeture de la modal pour ne pas bloquer l'utilisateur
+   */
+  const syncInBackground = (updatedLead, dateTime) => {
+    // Préparer les détails de l'événement
+    const adresseBien = lead.adresse || lead.bienDetails?.adresse || '';
+    const nomBien = lead.bien || lead.bienDetails?.nom || '';
+    const eventDetails = {
+      title: `Visite - ${lead.nom}${nomBien ? ` - ${nomBien}` : ''}`,
+      description: `Visite programmée avec ${lead.nom}\nBien: ${nomBien || 'N/A'}\nEmail: ${lead.email || 'N/A'}\nTéléphone: ${lead.telephone || 'N/A'}`,
+      location: adresseBien,
+      startDateTime: dateTime.toISOString(),
+      endDateTime: new Date(dateTime.getTime() + 60 * 60 * 1000).toISOString()
+    };
+
+    const backgroundTasks = [];
+
+    // WhatsApp (non-bloquant)
+    if (lead.phone || lead.telephone) {
+      backgroundTasks.push(
+        sendVisitConfirmationWhatsApp(agency, {
+          id: lead.id,
+          nom: lead.nom,
+          telephone: lead.phone || lead.telephone,
+          adresse: lead.adresse || lead.bienDetails?.adresse || null,
+          bien: lead.bien,
+          bienDetails: lead.bienDetails
+        }, dateTime.toISOString()).catch(err => console.error('❌ WhatsApp error:', err))
+      );
+    }
+
+    // Calendriers en parallèle
+    const userDataString = sessionStorage.getItem('emkai_user');
+    if (userDataString) {
+      const userData = JSON.parse(userDataString);
+
+      backgroundTasks.push(
+        (async () => {
+          // Vérifier les deux calendriers en parallèle
+          const [isGoogleConnected, isOutlookConnected] = await Promise.all([
+            checkGoogleCalendarStatus(userData.id).catch(() => false),
+            checkOutlookCalendarStatus(userData.id).catch(() => false),
+          ]);
+
+          const calendarTasks = [];
+
+          // Google Calendar
+          if (isGoogleConnected) {
+            calendarTasks.push((async () => {
+              try {
+                let result;
+                if (lead.googleCalendarEventId && lead.date_visite) {
+                  try {
+                    result = await updateGoogleCalendarEvent(userData.id, lead.googleCalendarEventId, eventDetails);
+                  } catch (updateError) {
+                    result = await createGoogleCalendarEvent(userData.id, eventDetails);
+                    await updateLead(lead.id, { google_calendar_event_id: result.eventId });
+                  }
+                } else {
+                  result = await createGoogleCalendarEvent(userData.id, eventDetails);
+                  await updateLead(lead.id, { google_calendar_event_id: result.eventId });
+                }
+              } catch (err) {
+                console.error('❌ Google Calendar sync error:', err);
+              }
+            })());
+          }
+
+          // Outlook Calendar
+          if (isOutlookConnected) {
+            calendarTasks.push((async () => {
+              try {
+                let result;
+                if (lead.outlookCalendarEventId && lead.date_visite) {
+                  try {
+                    result = await updateOutlookCalendarEvent(userData.id, lead.outlookCalendarEventId, eventDetails);
+                  } catch (updateError) {
+                    result = await createOutlookCalendarEvent(userData.id, eventDetails);
+                    await updateLead(lead.id, { outlook_calendar_event_id: result.eventId });
+                  }
+                } else {
+                  result = await createOutlookCalendarEvent(userData.id, eventDetails);
+                  await updateLead(lead.id, { outlook_calendar_event_id: result.eventId });
+                }
+              } catch (err) {
+                console.error('❌ Outlook Calendar sync error:', err);
+              }
+            })());
+          }
+
+          // Fallback : Export manuel si aucun calendrier connecté
+          if (!isGoogleConnected && !isOutlookConnected) {
+            const connectedCalendar = sessionStorage.getItem(`calendar_${agency}_${userData.email}`);
+            if (connectedCalendar) {
+              try {
+                exportToCalendar(connectedCalendar, updatedLead, dateTime);
+              } catch (err) {
+                console.error('❌ Manual calendar export error:', err);
+              }
+            }
+          }
+
+          await Promise.allSettled(calendarTasks);
+        })()
+      );
+    }
+
+    Promise.allSettled(backgroundTasks);
+  };
+
   const handleSchedule = async (e) => {
     e.preventDefault();
 
@@ -98,129 +258,26 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
       const dateTimeString = `${visitDate}T${visitTime}:00`;
       const dateTime = new Date(dateTimeString);
 
-      // 1️⃣ Enregistrer la visite dans Supabase
-      const updatedLead = await scheduleVisit(agency, lead.id, dateTime.toISOString());
+      // 1️⃣ Enregistrer la visite dans Supabase (seule action bloquante)
+      const updatedLead = await scheduleVisit(lead.id, dateTime.toISOString());
 
-      // 2️⃣ Notifier le composant parent de la mise à jour
+      // 2️⃣ Notifier le composant parent
       if (onLeadUpdate) {
         onLeadUpdate(updatedLead);
       }
 
-      // 3️⃣ Envoyer un message WhatsApp de confirmation au prospect
-      console.log('📱 [WhatsApp] lead.phone:', lead.phone, 'lead.telephone:', lead.telephone);
-      if (lead.phone || lead.telephone) {
-        console.log('📱 [WhatsApp] Envoi du message de confirmation...');
-        console.log('📱 [WhatsApp] Agency (client_id):', agency);
-        try {
-          // Récupérer l'adresse depuis bienDetails si lead.adresse est null
-          const adresseBien = lead.adresse || lead.bienDetails?.adresse || null;
-          console.log('📱 [WhatsApp] lead.adresse:', lead.adresse);
-          console.log('📱 [WhatsApp] lead.bienDetails:', lead.bienDetails);
-          console.log('📱 [WhatsApp] adresseBien finale:', adresseBien);
+      // 3️⃣ Fermer la modal immédiatement
+      onClose();
 
-          const whatsappResult = await sendVisitConfirmationWhatsApp(agency, {
-            id: lead.id,
-            nom: lead.nom,
-            telephone: lead.phone || lead.telephone,
-            adresse: adresseBien,
-            bien: lead.bien,
-            bienDetails: lead.bienDetails
-          }, dateTime.toISOString());
+      // 4️⃣ Lancer WhatsApp + calendriers en arrière-plan (fire-and-forget)
+      syncInBackground(updatedLead, dateTime);
 
-          console.log('📱 [WhatsApp] Résultat:', whatsappResult);
-          if (!whatsappResult.success) {
-            console.error('⚠️ Message WhatsApp de confirmation non envoyé:', whatsappResult.error);
-          } else {
-            console.log('✅ [WhatsApp] Message envoyé avec succès');
-          }
-        } catch (whatsappError) {
-          console.error('❌ Erreur lors de l\'envoi du message WhatsApp:', whatsappError);
-          // Ne pas bloquer l'opération si le WhatsApp échoue
-        }
-      }
-
-      // 4️⃣ Synchronisation automatique avec le calendrier
-      const userDataString = sessionStorage.getItem('emkai_user');
-      console.log('📅 [Calendar Sync] userDataString:', userDataString);
-      if (userDataString) {
-        const userData = JSON.parse(userDataString);
-        console.log('📅 [Calendar Sync] userData.id:', userData.id);
-        console.log('📅 [Calendar Sync] userData:', userData);
-
-        // Vérifier si Google Calendar est connecté via OAuth
-        const isGoogleConnected = await checkGoogleCalendarStatus(userData.id);
-        console.log('📅 [Calendar Sync] isGoogleConnected:', isGoogleConnected);
-
-        if (isGoogleConnected) {
-          console.log('📅 [Calendar Sync] Google Calendar est connecté, création de l\'événement...');
-          try {
-            // Si une visite existait déjà, supprimer l'ancien événement Google Calendar
-            if (lead.googleCalendarEventId && lead.date_visite) {
-              try {
-                await deleteGoogleCalendarEvent(userData.id, lead.googleCalendarEventId);
-                console.log('✅ Ancien événement Google Calendar supprimé lors de la modification');
-              } catch (deleteError) {
-                console.warn('⚠️ Impossible de supprimer l\'ancien événement Google Calendar:', deleteError);
-                // Ne pas bloquer l'opération si la suppression échoue
-              }
-            }
-
-            // Créer le nouvel événement dans Google Calendar
-            const eventDetails = {
-              title: `Visite - ${lead.nom}`,
-              description: `Visite programmée avec ${lead.nom}\nEmail: ${lead.email || 'N/A'}\nTéléphone: ${lead.telephone || 'N/A'}`,
-              startDateTime: dateTime.toISOString(),
-              endDateTime: new Date(dateTime.getTime() + 60 * 60 * 1000).toISOString() // Durée : 1 heure
-            };
-
-            console.log('📅 [Calendar Sync] Appel createGoogleCalendarEvent avec eventDetails:', eventDetails);
-            const result = await createGoogleCalendarEvent(userData.id, eventDetails);
-            console.log('📅 [Calendar Sync] Résultat création événement:', result);
-
-            // Sauvegarder l'eventId dans Supabase pour permettre la suppression ultérieure
-            await updateLead(agency, lead.id, {
-              google_calendar_event_id: result.eventId
-            });
-
-            updatedLead.googleCalendarEventId = result.eventId;
-          } catch (exportError) {
-            console.error('❌ Erreur lors de la création de l\'événement Google Calendar:', exportError);
-            // Afficher un avertissement mais ne pas bloquer l'opération
-            setToast({
-              type: 'warning',
-              message: 'Visite programmée mais erreur lors de l\'ajout au calendrier Google'
-            });
-          }
-        } else {
-          console.log('📅 [Calendar Sync] Google Calendar NON connecté, fallback vers export manuel');
-          // Fallback : Export manuel pour Outlook ou autres calendriers
-          const connectedCalendar = sessionStorage.getItem(`calendar_${agency}_${userData.email}`);
-          if (connectedCalendar) {
-            try {
-              exportToCalendar(connectedCalendar, updatedLead, dateTime);
-            } catch (exportError) {
-              console.error('❌ Erreur lors de l\'export vers le calendrier:', exportError);
-            }
-          }
-        }
-      }
-
-      setToast({
-        type: 'success',
-        message: 'Visite programmée avec succès'
-      });
-
-      // Fermer la modal après 1 seconde
-      setTimeout(() => {
-        onClose();
-      }, 1000);
     } catch (error) {
       console.error('❌ Erreur lors de la programmation de la visite:', error);
       setToast({
         type: 'error',
         message: 'Erreur lors de la programmation de la visite'
       });
-    } finally {
       setIsScheduling(false);
     }
   };
@@ -245,25 +302,33 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
     setIsCanceling(true);
 
     try {
+      const userDataString = sessionStorage.getItem('emkai_user');
+      const userData = userDataString ? JSON.parse(userDataString) : null;
+
       // 1️⃣ Supprimer l'événement Google Calendar si un eventId existe
-      if (lead.googleCalendarEventId) {
-        const userDataString = sessionStorage.getItem('emkai_user');
-        if (userDataString) {
-          const userData = JSON.parse(userDataString);
-          try {
-            await deleteGoogleCalendarEvent(userData.id, lead.googleCalendarEventId);
-            console.log('✅ Événement Google Calendar supprimé avec succès');
-          } catch (calendarError) {
-            console.error('⚠️ Erreur lors de la suppression de l\'événement Google Calendar:', calendarError);
-            // Ne pas bloquer l'annulation si la suppression Google Calendar échoue
-          }
+      if (lead.googleCalendarEventId && userData) {
+        try {
+          await deleteGoogleCalendarEvent(userData.id, lead.googleCalendarEventId);
+          console.log('✅ Événement Google Calendar supprimé avec succès');
+        } catch (calendarError) {
+          console.error('⚠️ Erreur lors de la suppression de l\'événement Google Calendar:', calendarError);
         }
       }
 
-      // 2️⃣ Annuler la visite dans Supabase
-      const updatedLead = await cancelVisit(agency, lead.id);
+      // 2️⃣ Supprimer l'événement Outlook Calendar si un eventId existe
+      if (lead.outlookCalendarEventId && userData) {
+        try {
+          await deleteOutlookCalendarEvent(userData.id, lead.outlookCalendarEventId);
+          console.log('✅ Événement Outlook Calendar supprimé avec succès');
+        } catch (calendarError) {
+          console.error('⚠️ Erreur lors de la suppression de l\'événement Outlook Calendar:', calendarError);
+        }
+      }
 
-      // 3️⃣ Notifier le composant parent de la mise à jour
+      // 3️⃣ Annuler la visite dans Supabase
+      const updatedLead = await cancelVisit(lead.id);
+
+      // 4️⃣ Notifier le composant parent de la mise à jour
       if (onLeadUpdate) {
         onLeadUpdate(updatedLead);
       }
@@ -378,6 +443,32 @@ const ScheduleVisitModal = ({ lead, onClose, onLeadUpdate, agency }) => {
               />
             </div>
           </div>
+
+          {/* Alerte de conflit */}
+          {conflicts.length > 0 && (
+            <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-lg">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                    Conflit de créneau détecté
+                  </p>
+                  <ul className="mt-1 space-y-1">
+                    {conflicts.map(c => {
+                      const time = new Date(c.date_visite).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+                      const sameBien = lead.property_reference && c.property_reference && lead.property_reference === c.property_reference;
+                      return (
+                        <li key={c.id} className="text-xs text-amber-700 dark:text-amber-400">
+                          <span className="font-medium">{c.agent_en_charge || 'Non assigné'}</span> — visite avec <span className="font-medium">{c.nom}</span> à {time}
+                          {sameBien && <span className="ml-1 text-amber-600 dark:text-amber-300">(même bien)</span>}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Buttons */}
           <div className="flex space-x-3">

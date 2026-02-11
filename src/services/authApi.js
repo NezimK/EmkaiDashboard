@@ -3,8 +3,10 @@
  * Gère les tokens JWT et les appels authentifiés
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
-const WEBHOOK_RESPONSE_URL = 'https://n8n.emkai.fr/webhook/response-dashboard-multitenant';
+// En dev, utiliser '' (URL relative) pour passer par le proxy Vite → localhost:3000
+const API_BASE = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000');
+const N8N_BASE = import.meta.env.VITE_N8N_WEBHOOK_BASE_URL || 'https://n8n.emkai.fr';
+const WEBHOOK_RESPONSE_URL = `${N8N_BASE}/webhook/response-dashboard-multitenant`;
 
 class AuthApi {
   constructor() {
@@ -25,7 +27,6 @@ class AuthApi {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true' // Bypass ngrok interstitial page
       },
       body: JSON.stringify({ email, password })
     });
@@ -122,8 +123,7 @@ class AuthApi {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'ngrok-skip-browser-warning': 'true'
-          },
+              },
           body: JSON.stringify({ refreshToken: this.refreshToken })
         });
 
@@ -153,8 +153,7 @@ class AuthApi {
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${this.accessToken}`,
-            'ngrok-skip-browser-warning': 'true'
-          },
+              },
           body: JSON.stringify({ refreshToken: this.refreshToken })
         });
       }
@@ -235,7 +234,6 @@ class AuthApi {
         ...options.headers,
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true'
       }
     });
 
@@ -251,8 +249,7 @@ class AuthApi {
             ...options.headers,
             'Authorization': `Bearer ${newToken}`,
             'Content-Type': 'application/json',
-            'ngrok-skip-browser-warning': 'true'
-          }
+              }
         });
       }
     }
@@ -297,6 +294,21 @@ class AuthApi {
   }
 
   /**
+   * Récupère la liste des agents disponibles pour l'assignation de leads
+   * @returns {Promise<Object>} { success, agents: [{ id, email, name, role }] }
+   */
+  async fetchAgents() {
+    const response = await this.fetchWithAuth(`${API_BASE}/api/users/agents`);
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || 'Erreur lors de la récupération des agents');
+    }
+
+    return response.json();
+  }
+
+  /**
    * Crée un nouvel utilisateur (envoi d'invitation par email)
    * @param {Object} userData - { email, firstName, lastName, role }
    */
@@ -315,7 +327,32 @@ class AuthApi {
     console.log('📥 createUser - response data:', data);
 
     if (!response.ok) {
-      throw new Error(data.error || 'Erreur lors de la création de l\'utilisateur');
+      const error = new Error(data.error || 'Erreur lors de la création de l\'utilisateur');
+      if (data.code) {
+        error.code = data.code;
+        error.usersCount = data.usersCount;
+        error.usersLimit = data.usersLimit;
+        error.plan = data.plan;
+      }
+      throw error;
+    }
+
+    return data;
+  }
+
+  /**
+   * Ajoute un siège supplémentaire (15€/mois)
+   * @returns {Promise<Object>} { success, message, newMaxUsers }
+   */
+  async addExtraSeat() {
+    const response = await this.fetchWithAuth(`${API_BASE}/api/stripe/add-extra-seat`, {
+      method: 'POST'
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Erreur lors de l\'ajout du siège supplémentaire');
     }
 
     return data;
@@ -360,6 +397,26 @@ class AuthApi {
   }
 
   /**
+   * Met à jour l'email de l'utilisateur connecté (avec vérification du mot de passe)
+   * @param {string} newEmail - Nouvel email
+   * @param {string} password - Mot de passe actuel pour confirmation
+   */
+  async updateEmail(newEmail, password) {
+    const response = await this.fetchWithAuth(`${API_BASE}/api/users/me/update-email`, {
+      method: 'POST',
+      body: JSON.stringify({ newEmail, password })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Erreur lors de la modification de l\'email');
+    }
+
+    return data;
+  }
+
+  /**
    * Renvoie l'invitation / reset le mot de passe d'un utilisateur
    * @param {string} userId - ID de l'utilisateur
    */
@@ -372,6 +429,64 @@ class AuthApi {
 
     if (!response.ok) {
       throw new Error(data.error || 'Erreur lors du reset du mot de passe');
+    }
+
+    return data;
+  }
+
+  // =============================================================================
+  // Gestion de l'abonnement (Stripe)
+  // =============================================================================
+
+  /**
+   * Récupère les informations d'abonnement du tenant
+   * @returns {Promise<Object>} Infos d'abonnement (plan, usage, limites, etc.)
+   */
+  async getSubscription() {
+    const response = await this.fetchWithAuth(`${API_BASE}/api/stripe/subscription`);
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Erreur lors de la récupération de l\'abonnement');
+    }
+
+    return data;
+  }
+
+  /**
+   * Crée une session Stripe Customer Portal pour gérer l'abonnement
+   * @returns {Promise<Object>} { success: true, url: string }
+   */
+  async createPortalSession() {
+    const response = await this.fetchWithAuth(`${API_BASE}/api/stripe/create-portal-session`, {
+      method: 'POST'
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Erreur lors de la création de la session');
+    }
+
+    return data;
+  }
+
+  /**
+   * Change de plan (upgrade ou downgrade)
+   * @param {string} newPlan - Le nouveau plan (essentiel, avance, premium)
+   * @returns {Promise<Object>} { success: true, message: string, subscription: Object }
+   */
+  async createUpgradeSession(newPlan) {
+    const response = await this.fetchWithAuth(`${API_BASE}/api/stripe/create-upgrade-session`, {
+      method: 'POST',
+      body: JSON.stringify({ newPlan })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Erreur lors du changement de plan');
     }
 
     return data;

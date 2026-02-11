@@ -14,8 +14,11 @@ const DB_FILE = path.join(__dirname, 'tokens.json');
 
 // Clé de chiffrement (doit être 32 bytes = 64 caractères hex)
 // IMPORTANT: Définir TOKEN_ENCRYPTION_KEY dans .env en production
-const ENCRYPTION_KEY = process.env.TOKEN_ENCRYPTION_KEY ||
-  '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+if (!process.env.TOKEN_ENCRYPTION_KEY) {
+  console.error('❌ FATAL: TOKEN_ENCRYPTION_KEY is not defined in environment variables. Server cannot start.');
+  process.exit(1);
+}
+const ENCRYPTION_KEY = process.env.TOKEN_ENCRYPTION_KEY;
 const IV_LENGTH = 16;
 
 /**
@@ -37,7 +40,7 @@ function encrypt(text) {
     return iv.toString('hex') + ':' + encrypted;
   } catch (error) {
     console.error('Encryption error:', error.message);
-    return text; // Fallback: retourner le texte non chiffré
+    throw new Error('Failed to encrypt token - refusing to store in plaintext');
   }
 }
 
@@ -62,7 +65,7 @@ function decrypt(text) {
     return decrypted;
   } catch (error) {
     console.error('Decryption error:', error.message);
-    return text; // Fallback: retourner le texte tel quel (peut être non chiffré)
+    throw new Error('Failed to decrypt token - data may be corrupted or key mismatch');
   }
 }
 

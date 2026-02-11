@@ -65,7 +65,18 @@ export async function sendWhatsAppMessage(clientId, leadId, phoneNumber, message
       throw new Error(`Webhook error: ${response.status} - ${errorText}`);
     }
 
-    const data = await response.json();
+    // Le webhook n8n peut retourner une réponse vide ou non-JSON
+    let data = null;
+    const responseText = await response.text();
+    if (responseText) {
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        // Réponse non-JSON, ce n'est pas une erreur
+        data = { raw: responseText };
+      }
+    }
+
     console.log(`✅ WhatsApp message sent successfully for client: ${clientId}`);
 
     return {
@@ -122,7 +133,17 @@ export async function sendEmail(clientId, leadId, email, subject, message, agent
       throw new Error(`Webhook error: ${response.status} - ${errorText}`);
     }
 
-    const data = await response.json();
+    // Le webhook n8n peut retourner une réponse vide ou non-JSON
+    let data = null;
+    const responseText = await response.text();
+    if (responseText) {
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        data = { raw: responseText };
+      }
+    }
+
     console.log(`✅ Email sent successfully for client: ${clientId}`);
 
     return {

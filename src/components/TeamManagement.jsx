@@ -1,12 +1,19 @@
 import { useState, useEffect } from 'react';
 import { Users, UserPlus, MoreVertical, Mail, RefreshCw, UserX, X } from 'lucide-react';
 import { authApi } from '../services/authApi';
+import MaxUsersModal from './MaxUsersModal';
+import PlanUpgradeModal from './PlanUpgradeModal';
 
 const TeamManagement = ({ currentUser, onToast }) => {
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState(null);
+
+  // État pour la limite d'utilisateurs
+  const [showMaxUsersModal, setShowMaxUsersModal] = useState(false);
+  const [maxUsersInfo, setMaxUsersInfo] = useState(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   // État du formulaire d'invitation
   const [inviteForm, setInviteForm] = useState({
@@ -58,10 +65,33 @@ const TeamManagement = ({ currentUser, onToast }) => {
       loadUsers();
     } catch (error) {
       console.error('Erreur invitation:', error);
-      onToast?.({ type: 'error', message: error.message || 'Erreur lors de l\'envoi de l\'invitation' });
+      if (error.code === 'MAX_USERS_REACHED') {
+        setMaxUsersInfo({
+          usersCount: error.usersCount,
+          usersLimit: error.usersLimit,
+          plan: error.plan
+        });
+        setShowInviteModal(false);
+        setShowMaxUsersModal(true);
+      } else {
+        onToast?.({ type: 'error', message: error.message || 'Erreur lors de l\'envoi de l\'invitation' });
+      }
     } finally {
       setIsInviting(false);
     }
+  };
+
+  // Siège supplémentaire ajouté avec succès
+  const handleSeatAdded = (newMaxUsers) => {
+    setShowMaxUsersModal(false);
+    onToast?.({ type: 'success', message: `Siège supplémentaire ajouté ! Vous pouvez maintenant inviter jusqu'à ${newMaxUsers} utilisateurs.` });
+    setShowInviteModal(true);
+  };
+
+  // L'utilisateur choisit de changer de plan
+  const handleUpgradePlan = () => {
+    setShowMaxUsersModal(false);
+    setShowUpgradeModal(true);
   };
 
   // Désactiver/réactiver un utilisateur
@@ -240,6 +270,31 @@ const TeamManagement = ({ currentUser, onToast }) => {
           ))}
         </div>
       )}
+
+      {/* Modal limite d'utilisateurs */}
+      <MaxUsersModal
+        isOpen={showMaxUsersModal}
+        onClose={() => setShowMaxUsersModal(false)}
+        usersCount={maxUsersInfo?.usersCount}
+        usersLimit={maxUsersInfo?.usersLimit}
+        plan={maxUsersInfo?.plan}
+        onUpgradePlan={handleUpgradePlan}
+        onSeatAdded={handleSeatAdded}
+      />
+
+      {/* Modal changement de plan */}
+      <PlanUpgradeModal
+        isOpen={showUpgradeModal}
+        onClose={() => {
+          setShowUpgradeModal(false);
+          loadUsers();
+        }}
+        currentPlan={maxUsersInfo?.plan}
+        onPlanChanged={() => {
+          setShowUpgradeModal(false);
+          loadUsers();
+        }}
+      />
 
       {/* Modal d'invitation */}
       {showInviteModal && (

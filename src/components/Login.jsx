@@ -160,7 +160,7 @@ const Login = ({ onLogin, error: propError, setPasswordToken, onSetPasswordSucce
 
     // Validation
     if (newPassword.length < 8) {
-      setSetPasswordError('Le mot de passe doit faire au moins 8 caractères');
+      setSetPasswordError('Le mot de passe doit contenir au moins 8 caractères');
       return;
     }
 
@@ -468,9 +468,10 @@ const Login = ({ onLogin, error: propError, setPasswordToken, onSetPasswordSucce
             </button>
           </form>
 
-          {/* Demo Credentials */}
+          {/* Demo Credentials - DEV uniquement */}
+          {import.meta.env.DEV && (
           <div className="mt-6 pt-6 border-t border-gray-800">
-            <p className="text-xs text-gray-500 text-center mb-3">Comptes de démonstration</p>
+            <p className="text-xs text-gray-500 text-center mb-3">Comptes de démonstration (DEV)</p>
 
             {/* Immocope */}
             <div className="mb-4">
@@ -520,16 +521,19 @@ const Login = ({ onLogin, error: propError, setPasswordToken, onSetPasswordSucce
               </div>
             </div>
           </div>
+          )}
         </div>
 
         {/* Footer */}
         <p className="text-center text-gray-500 text-sm mt-6">
           © 2026 IMMO Copilot - Tous droits réservés
         </p>
-        {/* Debug info - à retirer en prod */}
+        {/* Debug info - DEV uniquement */}
+        {import.meta.env.DEV && (
         <p className="text-center text-gray-600 text-xs mt-2 break-all px-4">
           API: {API_BASE_URL}
         </p>
+        )}
       </div>
 
       {/* ==================== MODAL MOT DE PASSE OUBLIÉ ==================== */}

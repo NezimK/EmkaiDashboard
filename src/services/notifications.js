@@ -4,7 +4,7 @@
  * Vérifie si les notifications sont supportées
  */
 export const isNotificationSupported = () => {
-  return 'Notification' in window && 'serviceWorker' in navigator;
+  return 'Notification' in window;
 };
 
 /**
@@ -60,11 +60,15 @@ export const sendNotification = async (title, options = {}) => {
   };
 
   try {
-    // Utiliser le Service Worker pour les notifications si disponible
-    const registration = await navigator.serviceWorker.ready;
-    return registration.showNotification(title, defaultOptions);
+    // Utiliser le Service Worker pour les notifications si disponible (prod uniquement)
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      const registration = await navigator.serviceWorker.ready;
+      return registration.showNotification(title, defaultOptions);
+    }
+    // Fallback vers Notification API standard (dev ou pas de SW)
+    return new Notification(title, defaultOptions);
   } catch (error) {
-    // Fallback vers Notification API standard
+    // Dernier fallback
     return new Notification(title, defaultOptions);
   }
 };

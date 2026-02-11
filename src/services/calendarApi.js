@@ -18,6 +18,9 @@
 // Fusionné avec saas-backend sur le port 3000
 const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
+// Import authApi pour les requêtes authentifiées
+import { authApi } from './authApi';
+
 // ============================================================
 // AUTHENTICATION
 // ============================================================
@@ -34,12 +37,14 @@ const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
  */
 export async function getGoogleAuthUrl(userId, userEmail, agency) {
   try {
+    const token = await authApi.getValidToken();
     const response = await fetch(`${API_URL}/api/auth/google/url`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
-      body: JSON.stringify({ userId, userEmail, agency }),
+      body: JSON.stringify({ userEmail, agency }),
     });
 
     if (!response.ok) {
@@ -63,12 +68,14 @@ export async function getGoogleAuthUrl(userId, userEmail, agency) {
  */
 export async function checkGoogleCalendarStatus(userId) {
   try {
+    const token = await authApi.getValidToken();
     const response = await fetch(`${API_URL}/api/auth/google/status`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({}),
     });
 
     if (!response.ok) {
@@ -94,12 +101,14 @@ export async function checkGoogleCalendarStatus(userId) {
  */
 export async function disconnectGoogleCalendar(userId) {
   try {
+    const token = await authApi.getValidToken();
     const response = await fetch(`${API_URL}/api/auth/google/disconnect`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({}),
     });
 
     if (!response.ok) {
@@ -132,10 +141,12 @@ export async function disconnectGoogleCalendar(userId) {
  */
 export async function createGoogleCalendarEvent(userId, eventDetails) {
   try {
+    const token = await authApi.getValidToken();
     const response = await fetch(`${API_URL}/api/calendar/event`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({ userId, eventDetails }),
     });
@@ -154,6 +165,41 @@ export async function createGoogleCalendarEvent(userId, eventDetails) {
 }
 
 /**
+ * Mettre à jour un événement Google Calendar existant
+ *
+ * @async
+ * @param {string} userId - Identifiant unique de l'utilisateur
+ * @param {string} eventId - Identifiant de l'événement Google Calendar
+ * @param {Object} eventDetails - Nouveaux détails de l'événement
+ * @returns {Promise<Object>} Objet contenant eventId et eventLink
+ * @throws {Error} Si la mise à jour échoue
+ */
+export async function updateGoogleCalendarEvent(userId, eventId, eventDetails) {
+  try {
+    const token = await authApi.getValidToken();
+    const response = await fetch(`${API_URL}/api/calendar/event/update`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ userId, eventId, eventDetails }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to update event');
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error updating calendar event:', error);
+    throw error;
+  }
+}
+
+/**
  * Supprimer un événement de Google Calendar
  *
  * @async
@@ -164,10 +210,12 @@ export async function createGoogleCalendarEvent(userId, eventDetails) {
  */
 export async function deleteGoogleCalendarEvent(userId, eventId) {
   try {
+    const token = await authApi.getValidToken();
     const response = await fetch(`${API_URL}/api/calendar/event/delete`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({ userId, eventId }),
     });
@@ -200,12 +248,14 @@ export async function deleteGoogleCalendarEvent(userId, eventId) {
  */
 export async function getOutlookAuthUrl(userId, userEmail, agency) {
   try {
+    const token = await authApi.getValidToken();
     const response = await fetch(`${API_URL}/api/auth/outlook/url`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
-      body: JSON.stringify({ userId, userEmail, agency }),
+      body: JSON.stringify({ userEmail, agency }),
     });
 
     if (!response.ok) {
@@ -229,12 +279,14 @@ export async function getOutlookAuthUrl(userId, userEmail, agency) {
  */
 export async function checkOutlookCalendarStatus(userId) {
   try {
+    const token = await authApi.getValidToken();
     const response = await fetch(`${API_URL}/api/auth/outlook/status`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({}),
     });
 
     if (!response.ok) {
@@ -259,12 +311,14 @@ export async function checkOutlookCalendarStatus(userId) {
  */
 export async function disconnectOutlookCalendar(userId) {
   try {
+    const token = await authApi.getValidToken();
     const response = await fetch(`${API_URL}/api/auth/outlook/disconnect`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({}),
     });
 
     if (!response.ok) {
@@ -289,10 +343,12 @@ export async function disconnectOutlookCalendar(userId) {
  */
 export async function createOutlookCalendarEvent(userId, eventDetails) {
   try {
+    const token = await authApi.getValidToken();
     const response = await fetch(`${API_URL}/api/calendar/outlook/event`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({ userId, eventDetails }),
     });
@@ -311,6 +367,41 @@ export async function createOutlookCalendarEvent(userId, eventDetails) {
 }
 
 /**
+ * Mettre à jour un événement Outlook Calendar existant
+ *
+ * @async
+ * @param {string} userId - Identifiant unique de l'utilisateur
+ * @param {string} eventId - Identifiant de l'événement Outlook
+ * @param {Object} eventDetails - Nouveaux détails de l'événement
+ * @returns {Promise<Object>} Objet contenant eventId et eventLink
+ * @throws {Error} Si la mise à jour échoue
+ */
+export async function updateOutlookCalendarEvent(userId, eventId, eventDetails) {
+  try {
+    const token = await authApi.getValidToken();
+    const response = await fetch(`${API_URL}/api/calendar/outlook/event/update`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ userId, eventId, eventDetails }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to update Outlook event');
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error updating Outlook calendar event:', error);
+    throw error;
+  }
+}
+
+/**
  * Supprimer un événement de Outlook Calendar
  *
  * @async
@@ -321,10 +412,12 @@ export async function createOutlookCalendarEvent(userId, eventDetails) {
  */
 export async function deleteOutlookCalendarEvent(userId, eventId) {
   try {
+    const token = await authApi.getValidToken();
     const response = await fetch(`${API_URL}/api/calendar/outlook/event/delete`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({ userId, eventId }),
     });
@@ -354,12 +447,14 @@ export async function deleteOutlookCalendarEvent(userId, eventId) {
  */
 export async function checkAllCalendarStatus(userId) {
   try {
+    const token = await authApi.getValidToken();
     const response = await fetch(`${API_URL}/api/auth/calendar/status`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({}),
     });
 
     if (!response.ok) {

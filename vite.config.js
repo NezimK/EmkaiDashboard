@@ -57,25 +57,20 @@ export default defineConfig({
   server: {
     host: '0.0.0.0', // Accessible sur le réseau local
     proxy: {
-      // Proxy pour n8n webhooks - contourne CORS en développement
+      // Proxy pour n8n webhooks (rewrite spécifique)
       '/api/n8n': {
         target: 'https://n8n.emkai.fr',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/n8n/, ''),
         secure: true,
       },
-      // Proxy pour saas-backend auth API - contourne CORS en développement
-      '/api/auth': {
+      // Toutes les autres routes API → saas-backend local
+      '/api': {
         target: 'http://localhost:3000',
         changeOrigin: true,
       },
-      // Proxy pour onboarding API
-      '/api/onboarding': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-      },
-      // Proxy pour sync API
-      '/api/sync': {
+      // OAuth callbacks (servies par le backend, pas par /api)
+      '/auth': {
         target: 'http://localhost:3000',
         changeOrigin: true,
       },

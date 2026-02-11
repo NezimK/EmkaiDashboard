@@ -3,7 +3,11 @@ import crypto from 'crypto';
 import { getUserTokens, saveUserTokens } from './db.js';
 
 // SÉCURITÉ: Secret pour signer le state OAuth (doit être défini dans .env)
-const STATE_SECRET = process.env.STATE_SECRET || 'default-state-secret-change-me-in-production';
+if (!process.env.STATE_SECRET) {
+  console.error('❌ FATAL: STATE_SECRET is not defined in environment variables. Server cannot start.');
+  process.exit(1);
+}
+const STATE_SECRET = process.env.STATE_SECRET;
 
 // Create OAuth2 client
 export function getOAuth2Client() {

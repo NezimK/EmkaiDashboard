@@ -15,7 +15,8 @@ import KpiStats from './components/KpiStats';
 import RelanceView from './components/RelanceView';
 import Onboarding from './components/Onboarding';
 import NotificationPrompt from './components/NotificationPrompt';
-import { fetchLeads, subscribeToLeads, unsubscribeFromLeads } from './services/supabase';
+import ErrorBoundary from './components/ErrorBoundary';
+import { fetchLeads } from './services/leadsApi';
 import { authApi, API_BASE_URL } from './services/authApi';
 import { notifyNewLead, getNotificationPermission, getNotificationPreference } from './services/notifications';
 
@@ -36,6 +37,8 @@ function App() {
   const [showOnboarding, setShowOnboarding] = useState(false); // Afficher l'onboarding
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false); // Sidebar mobile
   const [accountType, setAccountType] = useState(null); // Type de compte (agence ou independant)
+  const [currentPlan, setCurrentPlan] = useState(null); // Plan actuel du tenant
+  const [activeSettingsTab, setActiveSettingsTab] = useState(null); // Onglet actif dans Settings (contrôlé par onboarding)
 
   // Calculer les KPIs depuis les leads en temps réel
   const getKPIs = () => {
@@ -66,22 +69,21 @@ function App() {
 
   const kpis = getKPIs();
 
-  // Charger les leads depuis Supabase avec real-time subscriptions
+  // Charger les leads via le backend API (sécurisé par JWT)
   useEffect(() => {
-    // Ne charger les leads que si l'utilisateur est authentifié et a un client_id
-    const clientId = currentUser?.client_id || currentUser?.agency;
-    if (!isAuthenticated || !clientId) {
+    if (!isAuthenticated || !currentUser) {
       setLoading(false);
       return;
     }
 
-    let subscription = null;
+    let previousLeadIds = new Set();
 
     async function loadLeads() {
       try {
         setLoading(true);
         setError(null);
-        const data = await fetchLeads(clientId);
+        const data = await fetchLeads();
+        previousLeadIds = new Set(data.map(l => l.id));
         setLeads(data);
       } catch (err) {
         console.error('Erreur lors du chargement des leads:', err);
@@ -91,54 +93,50 @@ function App() {
       }
     }
 
-    // Charger les leads initiaux
     loadLeads();
 
-    // Configurer les subscriptions real-time (plus besoin de polling !)
-    subscription = subscribeToLeads(clientId, {
-      onInsert: (newLead) => {
-        console.log('📥 Nouveau lead reçu en temps réel:', newLead.nom);
-        setLeads(prevLeads => [newLead, ...prevLeads]);
-        // Envoyer une notification push si activée
-        if (getNotificationPermission() === 'granted' && getNotificationPreference()) {
-          notifyNewLead(newLead);
-        }
-      },
-      onUpdate: (updatedLead) => {
-        console.log('📝 Lead mis à jour en temps réel:', updatedLead.nom);
-        setLeads(prevLeads =>
-          prevLeads.map(lead =>
-            lead.id === updatedLead.id ? updatedLead : lead
-          )
-        );
-        // Mettre à jour les modales ouvertes si nécessaire
-        if (selectedLeadForInfo?.id === updatedLead.id) {
-          setSelectedLeadForInfo(updatedLead);
-        }
-        if (selectedLeadForConversation?.id === updatedLead.id) {
-          setSelectedLeadForConversation(updatedLead);
-        }
-      },
-      onDelete: (deletedLeadId) => {
-        console.log('🗑️ Lead supprimé en temps réel:', deletedLeadId);
-        setLeads(prevLeads => prevLeads.filter(lead => lead.id !== deletedLeadId));
-        // Fermer les modales si le lead supprimé était sélectionné
-        if (selectedLeadForInfo?.id === deletedLeadId) {
-          setSelectedLeadForInfo(null);
-        }
-        if (selectedLeadForConversation?.id === deletedLeadId) {
-          setSelectedLeadForConversation(null);
-        }
-      },
-    });
+    // Polling : rafraîchit les leads toutes les 15 secondes
+    const pollInterval = setInterval(async () => {
+      try {
+        const freshLeads = await fetchLeads();
 
-    // Cleanup: se désabonner quand le composant est démonté ou l'utilisateur change
-    return () => {
-      if (subscription) {
-        unsubscribeFromLeads(subscription);
+        // Détecter les nouveaux leads pour les notifications
+        freshLeads.forEach(lead => {
+          if (!previousLeadIds.has(lead.id)) {
+            if (getNotificationPermission() === 'granted' && getNotificationPreference()) {
+              notifyNewLead(lead);
+            }
+          }
+        });
+        previousLeadIds = new Set(freshLeads.map(l => l.id));
+
+        setLeads(freshLeads);
+      } catch (err) {
+        console.error('Polling error:', err);
+      }
+    }, 15000);
+
+    return () => clearInterval(pollInterval);
+  }, [isAuthenticated, currentUser]);
+
+  // Re-fetch immédiat quand l'utilisateur revient sur l'onglet
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser) return;
+
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible') {
+        try {
+          const freshLeads = await fetchLeads();
+          setLeads(freshLeads);
+        } catch (err) {
+          console.error('Visibility refetch error:', err);
+        }
       }
     };
-  }, [isAuthenticated, currentUser?.client_id, currentUser?.agency]);
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isAuthenticated, currentUser]);
 
   // Détecter si on est sur la page /set-password (invitation)
   useEffect(() => {
@@ -275,21 +273,26 @@ function App() {
     }
   };
 
-  // Charger le type de compte du tenant
+  // Charger le type de compte et le plan du tenant
   useEffect(() => {
-    const loadAccountType = async () => {
+    const loadTenantInfo = async () => {
       if (!currentUser?.tenant_id) return;
       try {
-        const response = await fetch(`/api/onboarding/tenant/${currentUser.tenant_id}`);
+        const response = await authApi.fetchWithAuth(`/api/onboarding/tenant/${currentUser.tenant_id}`);
         const data = await response.json();
-        if (data.success && data.tenant.account_type) {
-          setAccountType(data.tenant.account_type);
+        if (data.success && data.tenant) {
+          if (data.tenant.account_type) {
+            setAccountType(data.tenant.account_type);
+          }
+          if (data.tenant.plan) {
+            setCurrentPlan(data.tenant.plan);
+          }
         }
       } catch (error) {
-        console.error('Erreur chargement account_type:', error);
+        console.error('Erreur chargement infos tenant:', error);
       }
     };
-    loadAccountType();
+    loadTenantInfo();
   }, [currentUser?.tenant_id]);
 
   // Handlers pour l'onboarding
@@ -466,15 +469,12 @@ function App() {
       );
     } else if (currentView === 'en_decouverte') {
       // VUE: EN DÉCOUVERTE - Leads pris en charge par un agent
-      // Pour les agents : uniquement leurs dossiers
-      // Pour les managers : tous les dossiers
+      // Chaque utilisateur (agent ou manager) ne voit que ses propres dossiers
       return leads.filter(lead => {
         const isEnDecouverte = lead.statut === 'EN_DECOUVERTE';
-        const isManager = currentUser?.role === 'manager';
         const isAssignedToMe = lead.agent_en_charge === currentUser?.name;
 
-        if (isEnDecouverte) return isManager || isAssignedToMe;
-        return false;
+        return isEnDecouverte && isAssignedToMe;
       });
     } else if (currentView === 'visites') {
       // VUE 3: VISITES - Statut = "VISITE PROGRAMMÉE" OU présence d'une date_visite
@@ -589,6 +589,7 @@ function App() {
 
   // Si authentifié, afficher le dashboard
   return (
+    <ErrorBoundary>
     <div className="min-h-screen bg-gray-50 dark:bg-dark-bg transition-colors duration-300">
       <Header
         darkMode={darkMode}
@@ -609,6 +610,7 @@ function App() {
         accountType={accountType}
         isOpen={isMobileSidebarOpen}
         onClose={() => setIsMobileSidebarOpen(false)}
+        currentPlan={currentPlan}
       />
 
       {/* Main content avec padding left pour la sidebar (responsive) */}
@@ -621,6 +623,11 @@ function App() {
             onLogout={handleLogout}
             onUserUpdate={setCurrentUser}
             onRestartOnboarding={handleRestartOnboarding}
+            onNavigate={setCurrentView}
+            onPlanChanged={setCurrentPlan}
+            activeSettingsTab={activeSettingsTab}
+            onSettingsTabChange={setActiveSettingsTab}
+            accountType={accountType}
           />
         ) : currentView === 'kpi' ? (
           /* Vue Statistiques KPI */
@@ -765,6 +772,7 @@ function App() {
           currentUser={currentUser}
           onLeadUpdate={handleLeadUpdate}
           agency={currentUser?.agency}
+          allLeads={leads}
         />
       )}
 
@@ -784,12 +792,15 @@ function App() {
         onComplete={handleOnboardingComplete}
         onSkip={handleOnboardingSkip}
         onNavigate={setCurrentView}
+        onSettingsTabChange={setActiveSettingsTab}
         currentUser={currentUser}
+        accountType={accountType}
       />
 
       {/* Prompt pour activer les notifications */}
       <NotificationPrompt />
     </div>
+    </ErrorBoundary>
   );
 }
 

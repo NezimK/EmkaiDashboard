@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, MessageSquare, Send, PauseCircle, PlayCircle } from 'lucide-react';
 import Toast from './Toast';
-import { updateLeadStatus, assignLeadToAgent, markMessagesAsRead, toggleStopAI, fetchSingleLead } from '../services/supabase';
+import { updateLeadStatus, assignLeadToAgent, markMessagesAsRead, toggleStopAI, fetchSingleLead } from '../services/leadsApi';
 import { sendWhatsAppMessage, isWhatsAppConfigured } from '../services/whatsapp';
 
 const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
@@ -26,23 +26,29 @@ const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate, agency })
     setLocalConversation(lead.conversation || []);
   }, [lead.conversation, lead.nom]);
 
+  // Ref pour suivre le nombre de messages sans recréer l'interval
+  const conversationLengthRef = useRef(localConversation.length);
+  useEffect(() => {
+    conversationLengthRef.current = localConversation.length;
+  }, [localConversation.length]);
+
+  // Ref stable pour onLeadUpdate
+  const onLeadUpdateRef = useRef(onLeadUpdate);
+  useEffect(() => {
+    onLeadUpdateRef.current = onLeadUpdate;
+  }, [onLeadUpdate]);
+
   // Polling pour récupérer les nouveaux messages toutes les 5 secondes
   useEffect(() => {
     const pollMessages = async () => {
       try {
-        const updatedLead = await fetchSingleLead(agency, lead.id);
-
-        // Vérifier s'il y a de nouveaux messages
-        const currentCount = localConversation.length;
+        const updatedLead = await fetchSingleLead(lead.id);
         const newCount = updatedLead.conversation?.length || 0;
 
-        if (newCount > currentCount) {
-          console.log('📨 [ConversationModal] New messages detected:', newCount - currentCount);
+        if (newCount > conversationLengthRef.current) {
           setLocalConversation(updatedLead.conversation || []);
-
-          // Notifier le parent pour mettre à jour la liste
-          if (onLeadUpdate) {
-            onLeadUpdate(updatedLead);
+          if (onLeadUpdateRef.current) {
+            onLeadUpdateRef.current(updatedLead);
           }
         }
       } catch (error) {
@@ -50,12 +56,9 @@ const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate, agency })
       }
     };
 
-    // Démarrer le polling toutes les 5 secondes
     const intervalId = setInterval(pollMessages, 5000);
-
-    // Nettoyer l'intervalle quand le composant est démonté
     return () => clearInterval(intervalId);
-  }, [agency, lead.id, localConversation.length, onLeadUpdate]);
+  }, [agency, lead.id]);
 
   // Scroller vers le bas quand localConversation change (nouveau message)
   useEffect(() => {
@@ -70,7 +73,7 @@ const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate, agency })
       if (unreadCount > 0) {
         console.log('📬 Marking', unreadCount, 'messages as read for', lead.nom);
         try {
-          const updatedLead = await markMessagesAsRead(agency, lead.id, lead.conversation);
+          const updatedLead = await markMessagesAsRead(lead.id, lead.conversation);
 
           // Notifier le parent pour mettre à jour la liste
           if (onLeadUpdate) {
@@ -137,18 +140,13 @@ const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate, agency })
       // Si le lead n'est pas assigné à l'utilisateur actuel, l'assigner
       if (!isAssignedToMe && currentUser) {
         console.log('📝 Assignation automatique du lead à', currentUser.name);
-        const updatedLead = await assignLeadToAgent(agency, lead.id, currentUser.name, currentUser.id);
+        const updatedLead = await assignLeadToAgent(lead.id, currentUser.name);
 
         // Notifier le parent pour mettre à jour la liste
         if (onLeadUpdate) {
           onLeadUpdate(updatedLead);
         }
       }
-
-      setToast({
-        type: 'success',
-        message: 'Message envoyé avec succès'
-      });
 
       console.log('✅ Message envoyé avec succès');
     } catch (error) {
@@ -187,7 +185,7 @@ const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate, agency })
 
     try {
       const newPauseValue = !isAIPaused;
-      const updatedLead = await toggleStopAI(agency, lead.id, newPauseValue);
+      const updatedLead = await toggleStopAI(lead.id, newPauseValue);
 
       setIsAIPaused(newPauseValue);
 
@@ -268,12 +266,12 @@ const ConversationModal = ({ lead, onClose, currentUser, onLeadUpdate, agency })
                 {isAIPaused ? (
                   <>
                     <PlayCircle className="w-5 h-5" />
-                    <span className="text-sm">Reprendre IA</span>
+                    <span className="text-sm">Reprendre l'IA</span>
                   </>
                 ) : (
                   <>
                     <PauseCircle className="w-5 h-5" />
-                    <span className="text-sm">Pause IA</span>
+                    <span className="text-sm">Pause de l'IA</span>
                   </>
                 )}
               </button>

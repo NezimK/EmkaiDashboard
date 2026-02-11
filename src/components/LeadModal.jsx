@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Mail, Phone, Euro, Globe, Calendar, Target, Lock, UserCheck, UserMinus, Users, CheckCircle2 } from 'lucide-react';
-import { assignLeadToAgent, unassignLead, updateLeadStatus } from '../services/supabase';
-import { mockUsers } from '../data/users';
+import { X, User, Mail, Phone, Euro, Globe, Calendar, Target, Lock, UserCheck, UserMinus, Users, Archive } from 'lucide-react';
+import { assignLeadToAgent, unassignLead, updateLeadStatus } from '../services/leadsApi';
+import { authApi } from '../services/authApi';
 import ConfirmDialog from './ConfirmDialog';
 import AgentSelector from './AgentSelector';
-import StatusSelector from './StatusSelector';
 import ScheduleVisitModal from './ScheduleVisitModal';
 
-const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
+const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency, allLeads }) => {
   if (!lead) return null;
 
   const [isAssigning, setIsAssigning] = useState(false);
@@ -15,8 +14,9 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
   const [showTakeOverConfirm, setShowTakeOverConfirm] = useState(false);
   const [showUnassignConfirm, setShowUnassignConfirm] = useState(false);
   const [showAgentSelector, setShowAgentSelector] = useState(false);
-  const [showStatusSelector, setShowStatusSelector] = useState(false);
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
   const [showScheduleVisit, setShowScheduleVisit] = useState(false);
+  const [availableAgents, setAvailableAgents] = useState([]);
 
   // Déterminer le statut d'assignation
   const isAssignedToMe = lead.agent_en_charge && currentUser && lead.agent_en_charge === currentUser.name;
@@ -24,10 +24,19 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
   const isFree = !lead.agent_en_charge;
   const isManager = currentUser?.role === 'manager';
 
-  // Liste des agents disponibles (exclure les managers et filtrer par agence)
-  const availableAgents = mockUsers.filter(user =>
-    user.role === 'agent' && user.agency === agency
-  );
+  // Charger les agents disponibles depuis l'API
+  useEffect(() => {
+    if (!isManager) return;
+    const loadAgents = async () => {
+      try {
+        const data = await authApi.fetchAgents();
+        setAvailableAgents(data.agents || []);
+      } catch (error) {
+        console.error('Erreur chargement agents:', error);
+      }
+    };
+    loadAgents();
+  }, [isManager]);
 
   // Assigner le lead à l'utilisateur connecté
   const handleAssignToMe = async () => {
@@ -37,7 +46,7 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
     setAssignmentError(null);
 
     try {
-      const updatedLead = await assignLeadToAgent(agency, lead.id, currentUser.name, currentUser.id);
+      const updatedLead = await assignLeadToAgent(lead.id, currentUser.name);
       if (onLeadUpdate) {
         onLeadUpdate(updatedLead);
       }
@@ -61,7 +70,7 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
     setAssignmentError(null);
 
     try {
-      const updatedLead = await assignLeadToAgent(agency, lead.id, currentUser.name, currentUser.id);
+      const updatedLead = await assignLeadToAgent(lead.id, currentUser.name);
       if (onLeadUpdate) {
         onLeadUpdate(updatedLead);
       }
@@ -85,7 +94,7 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
     setAssignmentError(null);
 
     try {
-      const updatedLead = await unassignLead(agency, lead.id);
+      const updatedLead = await unassignLead(lead.id);
       if (onLeadUpdate) {
         onLeadUpdate(updatedLead);
       }
@@ -107,7 +116,7 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
     setAssignmentError(null);
 
     try {
-      const updatedLead = await assignLeadToAgent(agency, lead.id, agentName);
+      const updatedLead = await assignLeadToAgent(lead.id, agentName);
       if (onLeadUpdate) {
         onLeadUpdate(updatedLead);
       }
@@ -125,7 +134,7 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
     setAssignmentError(null);
 
     try {
-      const updatedLead = await updateLeadStatus(agency, lead.id, newStatus);
+      const updatedLead = await updateLeadStatus(lead.id, newStatus);
       if (onLeadUpdate) {
         onLeadUpdate(updatedLead);
       }
@@ -178,12 +187,12 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
                 <span>{lead.date_visite ? 'Modifier visite' : 'Programmer visite'}</span>
               </button>
               <button
-                onClick={() => setShowStatusSelector(true)}
+                onClick={() => setShowArchiveConfirm(true)}
                 disabled={isAssigning}
-                className="flex items-center space-x-2 px-4 py-2 bg-white/20 hover:bg-white/30 text-white text-sm font-medium rounded-lg transition-colors border border-white/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center space-x-2 px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-white text-sm font-medium rounded-lg transition-colors border border-red-400/30 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Changer statut</span>
+                <Archive className="w-4 h-4" />
+                <span>Archiver</span>
               </button>
             </div>
           )}
@@ -240,47 +249,37 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
                     <p className="text-xs text-red-700 dark:text-red-300">Ce dossier est assigné à <span className="font-bold">{lead.agent_en_charge}</span></p>
                   </div>
                 </div>
-                <div className="flex items-center space-x-2">
-                  {!isManager ? (
+                {isManager && (
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={handleUnassignClick}
+                      disabled={isAssigning}
+                      className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
+                      title="Libérer le dossier"
+                    >
+                      <UserMinus className="w-3 h-3" />
+                      <span>Libérer</span>
+                    </button>
                     <button
                       onClick={handleTakeOverClick}
                       disabled={isAssigning}
-                      className="text-xs text-red-600 dark:text-red-400 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-2 bg-accent hover:bg-accent-dark text-black text-xs font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
+                      title="Prendre le dossier"
                     >
-                      {isAssigning ? 'Récupération...' : 'Récupérer le dossier'}
+                      <UserCheck className="w-3 h-3" />
+                      <span>Prendre</span>
                     </button>
-                  ) : (
-                    <>
-                      <button
-                        onClick={handleUnassignClick}
-                        disabled={isAssigning}
-                        className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
-                        title="Libérer le dossier"
-                      >
-                        <UserMinus className="w-3 h-3" />
-                        <span>Libérer</span>
-                      </button>
-                      <button
-                        onClick={handleTakeOverClick}
-                        disabled={isAssigning}
-                        className="px-3 py-2 bg-accent hover:bg-accent-dark text-black text-xs font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
-                        title="Prendre le dossier"
-                      >
-                        <UserCheck className="w-3 h-3" />
-                        <span>Prendre</span>
-                      </button>
-                      <button
-                        onClick={() => setShowAgentSelector(true)}
-                        disabled={isAssigning}
-                        className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
-                        title="Réassigner à un agent"
-                      >
-                        <Users className="w-3 h-3" />
-                        <span>Réassigner</span>
-                      </button>
-                    </>
-                  )}
-                </div>
+                    <button
+                      onClick={() => setShowAgentSelector(true)}
+                      disabled={isAssigning}
+                      className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
+                      title="Réassigner à un agent"
+                    >
+                      <Users className="w-3 h-3" />
+                      <span>Réassigner</span>
+                    </button>
+                  </div>
+                )}
               </div>
               {assignmentError && (
                 <p className="text-xs text-red-600 dark:text-red-400 mt-2">{assignmentError}</p>
@@ -403,7 +402,7 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
         onClose={() => setShowUnassignConfirm(false)}
         onConfirm={handleUnassignConfirm}
         title="Libérer ce dossier ?"
-        message="Êtes-vous sûr de vouloir libérer ce dossier ? Il redeviendra disponible pour tous les agents dans la section 'À Traiter'."
+        message="Êtes-vous sûr de vouloir libérer ce dossier ? Il redeviendra disponible pour tous les agents dans les Dossiers à traiter."
         confirmText="Oui, libérer"
         cancelText="Annuler"
         variant="default"
@@ -418,12 +417,16 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
         availableAgents={availableAgents}
       />
 
-      {/* Sélecteur de statut */}
-      <StatusSelector
-        isOpen={showStatusSelector}
-        onClose={() => setShowStatusSelector(false)}
-        onSelect={handleStatusChange}
-        currentStatus={lead.statut}
+      {/* Confirmation d'archivage */}
+      <ConfirmDialog
+        isOpen={showArchiveConfirm}
+        onClose={() => setShowArchiveConfirm(false)}
+        onConfirm={() => handleStatusChange('Archivé')}
+        title="Archiver ce dossier ?"
+        message="Ce prospect sera déplacé dans les archives. Vous pourrez le retrouver depuis les Réglages > Archives."
+        confirmText="Oui, archiver"
+        cancelText="Annuler"
+        variant="warning"
       />
 
       {/* Modal de programmation de visite */}
@@ -433,6 +436,7 @@ const LeadModal = ({ lead, onClose, currentUser, onLeadUpdate, agency }) => {
           onClose={() => setShowScheduleVisit(false)}
           onLeadUpdate={onLeadUpdate}
           agency={agency}
+          allLeads={allLeads}
         />
       )}
     </div>
