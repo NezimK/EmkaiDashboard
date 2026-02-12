@@ -40,10 +40,12 @@ export async function sendWhatsAppMessage(clientId, leadId, phoneNumber, message
   const webhookUrl = buildWebhookUrl('response-dashboard-multitenant');
 
   try {
-    console.log(`📤 Sending WhatsApp message for client: ${clientId}`);
-    console.log(`📱 To: ${phoneNumber}`);
-    console.log(`💬 Message: ${message.substring(0, 50)}...`);
-    console.log(`🔗 Webhook URL: ${webhookUrl}`);
+    if (import.meta.env.DEV) {
+      console.log(`📤 Sending WhatsApp message for client: ${clientId}`);
+      console.log(`📱 To: ${phoneNumber}`);
+      console.log(`💬 Message: ${message.substring(0, 50)}...`);
+      console.log(`🔗 Webhook URL: ${webhookUrl}`);
+    }
 
     const response = await fetch(webhookUrl, {
       method: 'POST',
@@ -77,7 +79,7 @@ export async function sendWhatsAppMessage(clientId, leadId, phoneNumber, message
       }
     }
 
-    console.log(`✅ WhatsApp message sent successfully for client: ${clientId}`);
+    if (import.meta.env.DEV) console.log(`✅ WhatsApp message sent successfully for client: ${clientId}`);
 
     return {
       success: true,
@@ -107,10 +109,12 @@ export async function sendEmail(clientId, leadId, email, subject, message, agent
   const webhookUrl = buildWebhookUrl('response-dashboard-multitenant'); // Mode test pour ce webhook
 
   try {
-    console.log(`📧 Sending email for client: ${clientId}`);
-    console.log(`📬 To: ${email}`);
-    console.log(`📝 Subject: ${subject}`);
-    console.log(`🔗 Webhook URL: ${webhookUrl}`);
+    if (import.meta.env.DEV) {
+      console.log(`📧 Sending email for client: ${clientId}`);
+      console.log(`📬 To: ${email}`);
+      console.log(`📝 Subject: ${subject}`);
+      console.log(`🔗 Webhook URL: ${webhookUrl}`);
+    }
 
     const response = await fetch(webhookUrl, {
       method: 'POST',
@@ -144,7 +148,7 @@ export async function sendEmail(clientId, leadId, email, subject, message, agent
       }
     }
 
-    console.log(`✅ Email sent successfully for client: ${clientId}`);
+    if (import.meta.env.DEV) console.log(`✅ Email sent successfully for client: ${clientId}`);
 
     return {
       success: true,

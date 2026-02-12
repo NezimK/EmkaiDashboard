@@ -311,7 +311,7 @@ ${leadData.adresse ? `
     }
     return { success: true, data: result };
   } catch (error) {
-    console.error("❌ Erreur lors de l'envoi du message WhatsApp:", error);
+    if (import.meta.env.DEV) console.error("❌ Erreur lors de l'envoi du message WhatsApp:", error);
     return { success: false, error: error.message };
   }
 }
@@ -364,7 +364,7 @@ export async function resetPassword(email) {
     }
     return { success: true, message: data.message };
   } catch (error) {
-    console.error('❌ Error sending password reset email:', error);
+    if (import.meta.env.DEV) console.error('❌ Error sending password reset email:', error);
     throw error;
   }
 }

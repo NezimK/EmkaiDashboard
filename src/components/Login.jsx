@@ -16,9 +16,6 @@ import { Lock, Mail, AlertCircle, Eye, EyeOff, ArrowLeft, CheckCircle, UserPlus 
 import { resetPassword } from '../services/supabase';
 import { API_BASE_URL } from '../services/authApi';
 
-// Debug: afficher l'URL du backend (à retirer en prod)
-console.log('🔧 Backend URL:', API_BASE_URL);
-
 /**
  * Composant de page de connexion
  *
@@ -333,10 +330,6 @@ const Login = ({ onLogin, error: propError, setPasswordToken, onSetPasswordSucce
           <p className="text-center text-gray-500 text-sm mt-6">
             © 2026 IMMO Copilot - Tous droits réservés
           </p>
-          {/* Debug info - à retirer en prod */}
-          <p className="text-center text-gray-600 text-xs mt-2 break-all">
-            API: {API_BASE_URL}
-          </p>
         </div>
       </div>
     );
@@ -468,72 +461,12 @@ const Login = ({ onLogin, error: propError, setPasswordToken, onSetPasswordSucce
             </button>
           </form>
 
-          {/* Demo Credentials - DEV uniquement */}
-          {import.meta.env.DEV && (
-          <div className="mt-6 pt-6 border-t border-gray-800">
-            <p className="text-xs text-gray-500 text-center mb-3">Comptes de démonstration (DEV)</p>
-
-            {/* Immocope */}
-            <div className="mb-4">
-              <p className="text-xs font-semibold text-accent mb-2 flex items-center">
-                <span className="w-2 h-2 bg-accent rounded-full mr-2"></span>
-                Immocope
-              </p>
-              <div className="space-y-2 text-xs">
-                <div className="p-2 bg-gray-900/50 rounded">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-gray-400 font-semibold">Agent</span>
-                    <span className="text-blue-400 text-[10px]">AGENT</span>
-                  </div>
-                  <div className="text-accent font-mono text-[11px]">agent@immocope.com / agent123</div>
-                </div>
-                <div className="p-2 bg-gray-900/50 rounded">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-gray-400 font-semibold">Manager</span>
-                    <span className="text-purple-400 text-[10px]">MANAGER</span>
-                  </div>
-                  <div className="text-accent font-mono text-[11px]">manager@immocope.com / manager123</div>
-                </div>
-              </div>
-            </div>
-
-            {/* RealAgency */}
-            <div>
-              <p className="text-xs font-semibold text-green-400 mb-2 flex items-center">
-                <span className="w-2 h-2 bg-green-400 rounded-full mr-2"></span>
-                RealAgency
-              </p>
-              <div className="space-y-2 text-xs">
-                <div className="p-2 bg-gray-900/50 rounded">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-gray-400 font-semibold">Agent</span>
-                    <span className="text-blue-400 text-[10px]">AGENT</span>
-                  </div>
-                  <div className="text-green-400 font-mono text-[11px]">agent@realagency.com / agent123</div>
-                </div>
-                <div className="p-2 bg-gray-900/50 rounded">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-gray-400 font-semibold">Manager</span>
-                    <span className="text-purple-400 text-[10px]">MANAGER</span>
-                  </div>
-                  <div className="text-green-400 font-mono text-[11px]">manager@realagency.com / manager123</div>
-                </div>
-              </div>
-            </div>
-          </div>
-          )}
         </div>
 
         {/* Footer */}
         <p className="text-center text-gray-500 text-sm mt-6">
           © 2026 IMMO Copilot - Tous droits réservés
         </p>
-        {/* Debug info - DEV uniquement */}
-        {import.meta.env.DEV && (
-        <p className="text-center text-gray-600 text-xs mt-2 break-all px-4">
-          API: {API_BASE_URL}
-        </p>
-        )}
       </div>
 
       {/* ==================== MODAL MOT DE PASSE OUBLIÉ ==================== */}

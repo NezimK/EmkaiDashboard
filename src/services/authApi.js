@@ -87,11 +87,11 @@ class AuthApi {
     // Si pas de token en mémoire, essayer de charger depuis le storage
     if (!this.accessToken) {
       const loaded = this.loadStoredTokens();
-      console.log('🔑 Tokens chargés depuis storage:', loaded, '- accessToken:', !!this.accessToken);
+      if (import.meta.env.DEV) console.log('🔑 Tokens chargés depuis storage:', loaded);
     }
 
     if (!this.accessToken) {
-      console.warn('⚠️ Aucun token trouvé - localStorage:', !!localStorage.getItem('emkai_tokens'), '- sessionStorage:', !!sessionStorage.getItem('emkai_tokens'));
+      if (import.meta.env.DEV) console.warn('⚠️ Aucun token trouvé');
       throw new Error('Non authentifié');
     }
 
@@ -314,17 +314,13 @@ class AuthApi {
    */
   async createUser(userData) {
     const url = `${API_BASE}/api/users`;
-    console.log('📤 createUser - URL:', url);
-    console.log('📤 createUser - userData:', userData);
 
     const response = await this.fetchWithAuth(url, {
       method: 'POST',
       body: JSON.stringify(userData)
     });
 
-    console.log('📥 createUser - response status:', response.status);
     const data = await response.json();
-    console.log('📥 createUser - response data:', data);
 
     if (!response.ok) {
       const error = new Error(data.error || 'Erreur lors de la création de l\'utilisateur');

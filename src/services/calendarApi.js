@@ -16,7 +16,7 @@
 
 // Backend API URL (configurable via .env)
 // Fusionné avec saas-backend sur le port 3000
-const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+const API_URL = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000');
 
 // Import authApi pour les requêtes authentifiées
 import { authApi } from './authApi';
