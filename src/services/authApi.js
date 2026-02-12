@@ -228,7 +228,10 @@ class AuthApi {
   async fetchWithAuth(url, options = {}) {
     const token = await this.getValidToken();
 
-    const response = await fetch(url, {
+    // Auto-prefix relative URLs with API_BASE for production
+    const fullUrl = url.startsWith('/') ? `${API_BASE}${url}` : url;
+
+    const response = await fetch(fullUrl, {
       ...options,
       headers: {
         ...options.headers,
@@ -243,7 +246,7 @@ class AuthApi {
       if (data.code === 'TOKEN_EXPIRED') {
         await this.refreshAccessToken();
         const newToken = await this.getValidToken();
-        return fetch(url, {
+        return fetch(fullUrl, {
           ...options,
           headers: {
             ...options.headers,
